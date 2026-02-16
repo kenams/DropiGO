@@ -7,12 +7,15 @@ import { Card } from '../../components/Card';
 import { Screen } from '../../components/Screen';
 import { Tag } from '../../components/Tag';
 import { useAppState } from '../../state/AppState';
-import { colors, radius, spacing } from '../../theme';
+import { colors, radius, spacing, textStyles } from '../../theme';
 import { BuyerTabsParamList } from '../../navigation/types';
 
-export const FavoritesScreen: React.FC = () => {
+type OpenListing = (listingId: string) => void;
+
+const FavoritesContent: React.FC<{ onOpenListing: OpenListing }> = ({
+  onOpenListing,
+}) => {
   const { listings, favorites, toggleFavorite } = useAppState();
-  const navigation = useNavigation<BottomTabNavigationProp<BuyerTabsParamList>>();
 
   const favoriteListings = useMemo(() => {
     return listings
@@ -53,15 +56,15 @@ export const FavoritesScreen: React.FC = () => {
             <Text style={styles.cardText}>{item.variety}</Text>
             <Text style={styles.cardText}>{item.pricePerKg} € / kg</Text>
             <Text style={styles.cardText}>Stock : {item.stockKg} kg</Text>
+            <View style={styles.tagRow}>
+              {item.qualityTags.slice(0, 2).map((tag) => (
+                <Tag key={tag} label={tag} />
+              ))}
+            </View>
             <Text style={styles.cardMuted}>{item.location}</Text>
             <Text style={styles.cardMuted}>{item.pickupWindow}</Text>
             <Pressable
-              onPress={() =>
-                navigation.navigate('Feed', {
-                  screen: 'ListingDetail',
-                  params: { listingId: item.id },
-                })
-              }
+              onPress={() => onOpenListing(item.id)}
               style={styles.detailButton}
             >
               <Text style={styles.detailButtonText}>Voir le détail</Text>
@@ -73,27 +76,47 @@ export const FavoritesScreen: React.FC = () => {
   );
 };
 
+export const FavoritesScreen: React.FC = () => {
+  const navigation = useNavigation<BottomTabNavigationProp<BuyerTabsParamList>>();
+
+  return (
+    <FavoritesContent
+      onOpenListing={(id) =>
+        navigation.navigate('Feed', {
+          screen: 'ListingDetail',
+          params: { listingId: id },
+        })
+      }
+    />
+  );
+};
+
+export const FavoritesStandalone: React.FC<{
+  onOpenListing: OpenListing;
+}> = ({ onOpenListing }) => {
+  return <FavoritesContent onOpenListing={onOpenListing} />;
+};
+
 const styles = StyleSheet.create({
   container: {
     paddingTop: spacing.lg,
     paddingHorizontal: spacing.lg,
   },
   title: {
-    fontSize: 22,
-    fontWeight: '700',
-    color: colors.text,
+    ...textStyles.h2,
     marginBottom: spacing.md,
   },
   list: {
-    paddingBottom: spacing.lg,
+    paddingBottom: spacing.xxl,
   },
   empty: {
-    color: colors.muted,
+    ...textStyles.caption,
     textAlign: 'center',
     marginTop: spacing.lg,
   },
   card: {
     marginBottom: spacing.md,
+    borderColor: 'rgba(226, 58, 46, 0.12)',
   },
   image: {
     width: '100%',
@@ -115,18 +138,22 @@ const styles = StyleSheet.create({
     padding: spacing.xs,
   },
   cardTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: colors.text,
+    ...textStyles.h3,
     flex: 1,
     marginRight: spacing.xs,
   },
   cardText: {
-    color: colors.text,
+    ...textStyles.body,
     marginTop: spacing.xs,
   },
   cardMuted: {
-    color: colors.muted,
+    ...textStyles.caption,
+    marginTop: spacing.xs,
+  },
+  tagRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.xs,
     marginTop: spacing.xs,
   },
   detailButton: {
@@ -136,9 +163,11 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
     alignItems: 'center',
+    backgroundColor: 'transparent',
   },
   detailButtonText: {
+    ...textStyles.bodyBold,
     color: colors.primary,
-    fontWeight: '600',
   },
 });
+

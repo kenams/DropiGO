@@ -1,25 +1,35 @@
 ﻿import React, { useState } from 'react';
-import { Image, StyleSheet, Text, View } from 'react-native';
+import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
 import { PrimaryButton, GhostButton } from '../../components/Buttons';
+import { BackButton } from '../../components/BackButton';
 import { Field } from '../../components/Field';
+import { PortSuggestions } from '../../components/PortSuggestions';
 import { Screen } from '../../components/Screen';
 import { MapPreview } from '../../components/MapPreview';
 import { useAppState } from '../../state/AppState';
-import { colors, radius, spacing } from '../../theme';
+import { colors, radius, spacing, textStyles } from '../../theme';
 
-export const CreateListingScreen: React.FC = () => {
-  const { addListing } = useAppState();
+type Props = { onBack?: () => void };
+
+const CreateListingContent: React.FC<Props> = ({ onBack }) => {
+  const { addListing, knownPorts, registerPort } = useAppState();
   const [title, setTitle] = useState('');
   const [variety, setVariety] = useState('');
   const [pricePerKg, setPricePerKg] = useState('');
   const [stockKg, setStockKg] = useState('');
   const [location, setLocation] = useState('');
   const [pickupWindow, setPickupWindow] = useState('');
+  const [pickupSlotsRaw, setPickupSlotsRaw] = useState('');
+  const [catchDate, setCatchDate] = useState('');
+  const [method, setMethod] = useState('');
+  const [sizeGrade, setSizeGrade] = useState('');
+  const [qualityTags, setQualityTags] = useState<string[]>([]);
   const [imageUri, setImageUri] = useState<string | undefined>();
   const [coords, setCoords] = useState<{ latitude: number; longitude: number } | null>(null);
   const [notice, setNotice] = useState('');
+  const qualityOptions = ['Ultra frais', 'Pêche durable', 'Glace à bord', 'Tri premium', 'Local'];
 
   const pickImage = async () => {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -79,6 +89,11 @@ export const CreateListingScreen: React.FC = () => {
       setNotice('Complétez tous les champs avant de publier.');
       return;
     }
+    registerPort(location);
+    const pickupSlots = pickupSlotsRaw
+      .split(',')
+      .map((slot) => slot.trim())
+      .filter(Boolean);
     addListing({
       title,
       variety,
@@ -86,6 +101,11 @@ export const CreateListingScreen: React.FC = () => {
       stockKg: stock,
       location,
       pickupWindow,
+      pickupSlots: pickupSlots.length > 0 ? pickupSlots : undefined,
+      catchDate: catchDate || 'Aujourd\'hui',
+      method: method || 'Non précisée',
+      sizeGrade: sizeGrade || 'Standard',
+      qualityTags: qualityTags.length > 0 ? qualityTags : ['Frais'],
       imageUri,
       latitude: coords?.latitude,
       longitude: coords?.longitude,
@@ -96,13 +116,27 @@ export const CreateListingScreen: React.FC = () => {
     setStockKg('');
     setLocation('');
     setPickupWindow('');
+    setPickupSlotsRaw('');
+    setCatchDate('');
+    setMethod('');
+    setSizeGrade('');
+    setQualityTags([]);
     setImageUri(undefined);
     setCoords(null);
     setNotice('Annonce publiée.');
   };
 
+  const toggleQuality = (value: string) => {
+    setQualityTags((prev) =>
+      prev.includes(value)
+        ? prev.filter((tag) => tag !== value)
+        : [...prev, value]
+    );
+  };
+
   return (
     <Screen scroll>
+      {onBack && <BackButton onPress={onBack} style={styles.back} />}
       <Text style={styles.title}>Nouvelle pêche</Text>
       <Text style={styles.subtitle}>
         Publiez votre pêche du jour pour recevoir des réservations.
@@ -139,12 +173,68 @@ export const CreateListingScreen: React.FC = () => {
         onChangeText={setStockKg}
         keyboardType="numeric"
       />
-      <Field label="Lieu" value={location} onChangeText={setLocation} />
+      <Field
+        label="Lieu"
+        value={location}
+        onChangeText={setLocation}
+        onEndEditing={() => registerPort(location)}
+      />
+      <PortSuggestions
+        query={location}
+        ports={knownPorts}
+        label="Ports suggérés"
+        onSelect={(port) => {
+          setLocation(port);
+          registerPort(port);
+        }}
+      />
+      <Field
+        label="Date/heure de pêche"
+        value={catchDate}
+        onChangeText={setCatchDate}
+        placeholder="Ex: Aujourd'hui 05:00"
+      />
+      <Field
+        label="Méthode de pêche"
+        value={method}
+        onChangeText={setMethod}
+        placeholder="Ex: Ligne, senne..."
+      />
+      <Field
+        label="Calibre / taille"
+        value={sizeGrade}
+        onChangeText={setSizeGrade}
+        placeholder="Ex: Calibre 3 (300-500g)"
+      />
       <Field
         label="Créneau de retrait"
         value={pickupWindow}
         onChangeText={setPickupWindow}
       />
+      <Field
+        label="Créneaux précis (séparés par virgule)"
+        value={pickupSlotsRaw}
+        onChangeText={setPickupSlotsRaw}
+        placeholder="Ex: Aujourd'hui 17:30, Aujourd'hui 18:00"
+      />
+
+      <Text style={styles.sectionTitle}>Qualité & traçabilité</Text>
+      <View style={styles.chipRow}>
+        {qualityOptions.map((option) => {
+          const active = qualityTags.includes(option);
+          return (
+            <Pressable
+              key={option}
+              onPress={() => toggleQuality(option)}
+              style={[styles.chip, active && styles.chipActive]}
+            >
+              <Text style={[styles.chipText, active && styles.chipTextActive]}>
+                {option}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
 
       {notice.length > 0 && <Text style={styles.notice}>{notice}</Text>}
 
@@ -153,14 +243,25 @@ export const CreateListingScreen: React.FC = () => {
   );
 };
 
+export const CreateListingScreen: React.FC = () => {
+  return <CreateListingContent />;
+};
+
+export const CreateListingStandalone: React.FC<Props> = ({ onBack }) => {
+  return <CreateListingContent onBack={onBack} />;
+};
+
 const styles = StyleSheet.create({
+  back: {
+    marginBottom: spacing.md,
+    marginTop: spacing.sm,
+  },
   title: {
-    fontSize: 22,
-    fontWeight: '700',
-    color: colors.text,
+    ...textStyles.h2,
     marginBottom: spacing.xs,
   },
   subtitle: {
+    ...textStyles.body,
     color: colors.muted,
     marginBottom: spacing.lg,
   },
@@ -180,8 +281,37 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
   },
   notice: {
-    color: colors.muted,
-    fontSize: 12,
+    ...textStyles.caption,
     marginBottom: spacing.sm,
+  },
+  sectionTitle: {
+    ...textStyles.h3,
+    marginBottom: spacing.sm,
+  },
+  chipRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+    marginBottom: spacing.md,
+  },
+  chip: {
+    paddingVertical: spacing.xs,
+    paddingHorizontal: spacing.sm,
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: 'transparent',
+  },
+  chipActive: {
+    borderColor: colors.accent,
+    backgroundColor: 'transparent',
+  },
+  chipText: {
+    ...textStyles.caption,
+    color: colors.muted,
+  },
+  chipTextActive: {
+    color: colors.primaryDark,
+    fontFamily: textStyles.bodyBold.fontFamily,
   },
 });

@@ -11,7 +11,7 @@ export const exportSyncHistoryCsv = async (items: SyncHistoryItem[]) => {
     .map((row) => row.map((cell) => escapeCsv(cell)).join(';'))
     .join('\n');
 
-  const file = new File(Paths.cache, `dropigo-sync-${Date.now()}.csv`);
+  const file = new File(Paths.cache, `DroPiPêche-sync-${Date.now()}.csv`);
   file.create({ overwrite: true });
   file.write(csv, { encoding: 'utf8' });
 
@@ -19,8 +19,9 @@ export const exportSyncHistoryCsv = async (items: SyncHistoryItem[]) => {
   if (canShare) {
     await Sharing.shareAsync(file.uri, {
       mimeType: 'text/csv',
-      dialogTitle: 'Historique DropiGO',
+      dialogTitle: 'Historique DroPiPêche',
     });
   }
   return file.uri;
 };
+

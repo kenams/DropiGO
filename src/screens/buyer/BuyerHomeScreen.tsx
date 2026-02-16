@@ -1,280 +1,161 @@
 ﻿import React, { useMemo, useState } from 'react';
-import {
-  FlatList,
-  Image,
-  Pressable,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
+import { FlatList, Image, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
-import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { Ionicons } from '@expo/vector-icons';
-import * as Location from 'expo-location';
-import { GhostButton, PrimaryButton } from '../../components/Buttons';
+import { StackNavigationProp } from '@react-navigation/stack';
+import { PrimaryButton } from '../../components/Buttons';
+import { BackButton } from '../../components/BackButton';
 import { Card } from '../../components/Card';
 import { Field } from '../../components/Field';
+import { Logo } from '../../components/Logo';
 import { Screen } from '../../components/Screen';
-import { Tag } from '../../components/Tag';
 import { useAppState } from '../../state/AppState';
-import { colors, radius, spacing } from '../../theme';
+import { colors, radius, spacing, textStyles } from '../../theme';
 import { BuyerStackParamList } from '../../navigation/types';
-import { getDistanceKm } from '../../utils/geo';
-import { Listing } from '../../types';
 
-type NavProp = NativeStackNavigationProp<BuyerStackParamList, 'BuyerHome'>;
+// Simple buyer feed for the MVP demo.
 
-type Coords = { latitude: number; longitude: number };
-
-type ListingWithDistance = {
-  item: Listing;
-  distance: number | null;
-};
-
-type SortMode = 'recent' | 'price_low' | 'price_high' | 'distance';
-
-const sortOptions: { key: SortMode; label: string }[] = [
-  { key: 'recent', label: 'Plus récent' },
-  { key: 'price_low', label: 'Prix bas' },
-  { key: 'price_high', label: 'Prix haut' },
-  { key: 'distance', label: 'Distance' },
-];
+type NavProp = StackNavigationProp<BuyerStackParamList, 'BuyerHome'>;
 
 export const BuyerHomeScreen: React.FC = () => {
-  const { listings, favorites, toggleFavorite } = useAppState();
   const navigation = useNavigation<NavProp>();
-  const [buyerLocation, setBuyerLocation] = useState<Coords | null>(null);
-  const [locationLabel, setLocationLabel] = useState('');
-  const [maxDistance, setMaxDistance] = useState('');
-  const [notice, setNotice] = useState('');
-  const [sortMode, setSortMode] = useState<SortMode>('recent');
-  const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
+  return (
+    <BuyerHomeContent
+      onOpenListing={(id) => navigation.navigate('ListingDetail', { listingId: id })}
+    />
+  );
+};
 
-  const maxDistanceKm = Number(maxDistance.replace(',', '.'));
-  const filterActive = Number.isFinite(maxDistanceKm) && maxDistanceKm > 0;
-  const hasFilters =
-    buyerLocation !== null || maxDistance.length > 0 || showFavoritesOnly;
+export const BuyerHomeStandalone: React.FC<{
+  onOpenListing: (listingId: string) => void;
+}> = ({ onOpenListing }) => {
+  return <BuyerHomeContent onOpenListing={onOpenListing} />;
+};
 
-  const distanceSortUnavailable = sortMode === 'distance' && !buyerLocation;
-  const effectiveSort: SortMode = distanceSortUnavailable ? 'recent' : sortMode;
+const BuyerHomeContent: React.FC<{
+  onOpenListing: (listingId: string) => void;
+}> = ({ onOpenListing }) => {
+  const { listings, signOut, registerPort } = useAppState();
+  const [searchQuery, setSearchQuery] = useState('');
+  const [filterPort, setFilterPort] = useState('');
+  const [filterBoat, setFilterBoat] = useState('');
+  const [maxPrice, setMaxPrice] = useState('');
 
-  const listingItems: ListingWithDistance[] = useMemo(() => {
-    const base = listings.map((item) => {
-      if (buyerLocation && item.latitude !== undefined && item.longitude !== undefined) {
-        return {
-          item,
-          distance: getDistanceKm(
-            buyerLocation.latitude,
-            buyerLocation.longitude,
-            item.latitude,
-            item.longitude
-          ),
-        };
-      }
-      return { item, distance: null };
+  const listingItems = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    const portQuery = filterPort.trim().toLowerCase();
+    const boatQuery = filterBoat.trim().toLowerCase();
+    const maxPriceValue = Number(maxPrice.replace(',', '.'));
+    const hasMaxPrice = Number.isFinite(maxPriceValue) && maxPriceValue > 0;
+    if (!query) {
+      return listings.filter((item) => {
+        const matchesPort = portQuery
+          ? item.location.toLowerCase().includes(portQuery)
+          : true;
+        const matchesBoat = boatQuery
+          ? `${item.fisherBoat ?? ''} ${item.fisherName}`.toLowerCase().includes(boatQuery)
+          : true;
+        const matchesPrice = hasMaxPrice ? item.pricePerKg <= maxPriceValue : true;
+        return matchesPort && matchesBoat && matchesPrice;
+      });
+    }
+    return listings.filter((item) => {
+      const matchesQuery = `${item.title} ${item.variety} ${item.location} ${item.fisherName}`
+        .toLowerCase()
+        .includes(query);
+      const matchesPort = portQuery
+        ? item.location.toLowerCase().includes(portQuery)
+        : true;
+      const matchesBoat = boatQuery
+        ? `${item.fisherBoat ?? ''} ${item.fisherName}`.toLowerCase().includes(boatQuery)
+        : true;
+      const matchesPrice = hasMaxPrice ? item.pricePerKg <= maxPriceValue : true;
+      return matchesQuery && matchesPort && matchesBoat && matchesPrice;
     });
-
-    let filtered = base;
-    if (showFavoritesOnly) {
-      filtered = filtered.filter(({ item }) => favorites.includes(item.id));
-    }
-
-    if (filterActive && buyerLocation) {
-      filtered = filtered.filter(
-        ({ distance }) => distance !== null && distance <= maxDistanceKm
-      );
-    }
-
-    const sorted = [...filtered].sort((a, b) => {
-      if (effectiveSort === 'price_low') {
-        return a.item.pricePerKg - b.item.pricePerKg;
-      }
-      if (effectiveSort === 'price_high') {
-        return b.item.pricePerKg - a.item.pricePerKg;
-      }
-      if (effectiveSort === 'distance') {
-        if (a.distance === null && b.distance === null) {
-          return 0;
-        }
-        if (a.distance === null) {
-          return 1;
-        }
-        if (b.distance === null) {
-          return -1;
-        }
-        return a.distance - b.distance;
-      }
-      return (
-        new Date(b.item.createdAt).getTime() -
-        new Date(a.item.createdAt).getTime()
-      );
-    });
-
-    return sorted;
-  }, [
-    listings,
-    buyerLocation,
-    filterActive,
-    maxDistanceKm,
-    favorites,
-    showFavoritesOnly,
-    effectiveSort,
-  ]);
-
-  const useCurrentLocation = async () => {
-    const permission = await Location.requestForegroundPermissionsAsync();
-    if (permission.status !== 'granted') {
-      setNotice('Autorisez la localisation pour filtrer par distance.');
-      return;
-    }
-    const current = await Location.getCurrentPositionAsync({
-      accuracy: Location.Accuracy.Balanced,
-    });
-    const coords = {
-      latitude: current.coords.latitude,
-      longitude: current.coords.longitude,
-    };
-    setBuyerLocation(coords);
-    const [place] = await Location.reverseGeocodeAsync(coords);
-    if (place) {
-      const label = [place.city, place.region].filter(Boolean).join(', ');
-      setLocationLabel(label);
-    }
-    setNotice('');
-  };
-
-  const resetFilters = () => {
-    setBuyerLocation(null);
-    setLocationLabel('');
-    setMaxDistance('');
-    setShowFavoritesOnly(false);
-    setSortMode('recent');
-    setNotice('');
-  };
+  }, [listings, searchQuery, filterPort, filterBoat, maxPrice]);
 
   return (
     <Screen style={styles.container}>
-      <Text style={styles.title}>Pêches disponibles</Text>
+      <BackButton onPress={signOut} style={styles.back} />
+      <View style={styles.headerRow}>
+        <Logo size={64} showWordmark={false} compact />
+        <View style={styles.headerText}>
+          <Text style={styles.title}>Pêches disponibles</Text>
+          <Text style={styles.subtitle}>Direct pêcheurs & restaurateurs</Text>
+        </View>
+      </View>
+      <Text style={styles.meta}>Données chargées : {listingItems.length} pêches</Text>
+
+      <Card style={styles.statusCard}>
+        <Text style={styles.sectionTitle}>Bateaux en mer</Text>
+        {listingItems.length === 0 ? (
+          <Text style={styles.empty}>Aucun bateau signalé.</Text>
+        ) : (
+          listingItems.slice(0, 3).map((item) => (
+            <Text key={item.id} style={styles.statusItem}>
+              {item.fisherBoat ?? item.fisherName} • ETA {item.pickupWindow}
+            </Text>
+          ))
+        )}
+      </Card>
+
+      <View style={styles.searchRow}>
+        <TextInput
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+          placeholder="Rechercher un poisson, un port, un bateau..."
+          placeholderTextColor={colors.muted}
+          style={styles.searchInput}
+        />
+      </View>
 
       <Card style={styles.filterCard}>
-        <Text style={styles.filterTitle}>Filtrer par distance</Text>
-        <View style={styles.filterActions}>
-          <GhostButton label="Utiliser ma position" onPress={useCurrentLocation} />
-          {hasFilters && (
-            <GhostButton label="Réinitialiser" onPress={resetFilters} />
-          )}
-        </View>
-        {locationLabel.length > 0 && (
-          <Text style={styles.filterMeta}>Position : {locationLabel}</Text>
-        )}
+        <Text style={styles.sectionTitle}>Filtres rapides</Text>
         <Field
-          label="Distance max (km)"
-          value={maxDistance}
-          onChangeText={setMaxDistance}
-          keyboardType="numeric"
-          placeholder="Ex: 20"
+          label="Port"
+          value={filterPort}
+          onChangeText={setFilterPort}
+          placeholder="Ex: Sète, Oran..."
+          onEndEditing={() => registerPort(filterPort)}
         />
-        {filterActive && !buyerLocation && (
-          <Text style={styles.notice}>Activez la position pour appliquer le filtre.</Text>
-        )}
-        {notice.length > 0 && <Text style={styles.notice}>{notice}</Text>}
-
-        <View style={styles.filterRow}>
-          <Pressable
-            style={[
-              styles.favoriteToggle,
-              showFavoritesOnly && styles.favoriteToggleActive,
-            ]}
-            onPress={() => setShowFavoritesOnly((prev) => !prev)}
-          >
-            <Ionicons
-              name={showFavoritesOnly ? 'heart' : 'heart-outline'}
-              size={16}
-              color={showFavoritesOnly ? colors.danger : colors.muted}
-            />
-            <Text style={styles.favoriteToggleText}>Favoris uniquement</Text>
-          </Pressable>
-        </View>
-
-        <Text style={styles.filterTitle}>Trier par</Text>
-        <View style={styles.sortRow}>
-          {sortOptions.map((option) => (
-            <Pressable
-              key={option.key}
-              onPress={() => setSortMode(option.key)}
-              style={[
-                styles.sortChip,
-                sortMode === option.key && styles.sortChipActive,
-              ]}
-            >
-              <Text
-                style={[
-                  styles.sortChipText,
-                  sortMode === option.key && styles.sortChipTextActive,
-                ]}
-              >
-                {option.label}
-              </Text>
-            </Pressable>
-          ))}
-        </View>
-        {distanceSortUnavailable && (
-          <Text style={styles.notice}>Activez la position pour trier par distance.</Text>
-        )}
+        <Field
+          label="Bateau / pêcheur"
+          value={filterBoat}
+          onChangeText={setFilterBoat}
+          placeholder="Ex: L’Étoile Marine"
+        />
+        <Field
+          label="Prix max (€/kg)"
+          value={maxPrice}
+          onChangeText={setMaxPrice}
+          keyboardType="numeric"
+          placeholder="Ex: 18"
+        />
       </Card>
 
       <FlatList
         data={listingItems}
-        keyExtractor={(entry) => entry.item.id}
+        keyExtractor={(item) => item.id}
         contentContainerStyle={styles.list}
         ListEmptyComponent={
-          <Text style={styles.empty}>Aucune pêche trouvée pour ce rayon.</Text>
+          <Text style={styles.empty}>Aucune pêche trouvée.</Text>
         }
-        renderItem={({ item }) => {
-          const distance = item.distance;
-          const listing = item.item;
-          const isFavorite = favorites.includes(listing.id);
-
-          return (
-            <Card style={styles.card}>
-              {listing.imageUri && (
-                <Image source={{ uri: listing.imageUri }} style={styles.image} />
-              )}
-              <View style={styles.rowBetween}>
-                <Text style={styles.cardTitle}>{listing.title}</Text>
-                <View style={styles.rowEnd}>
-                  <Pressable
-                    onPress={() => toggleFavorite(listing.id)}
-                    style={styles.favoriteButton}
-                  >
-                    <Ionicons
-                      name={isFavorite ? 'heart' : 'heart-outline'}
-                      size={18}
-                      color={isFavorite ? colors.danger : colors.muted}
-                    />
-                  </Pressable>
-                  <Tag
-                    label={listing.status === 'active' ? 'Disponible' : 'Clôturé'}
-                  />
-                </View>
-              </View>
-              <Text style={styles.cardText}>{listing.variety}</Text>
-              <Text style={styles.cardText}>{listing.pricePerKg} € / kg</Text>
-              <Text style={styles.cardText}>Stock : {listing.stockKg} kg</Text>
-              <Text style={styles.cardMuted}>{listing.location}</Text>
-              <Text style={styles.cardMuted}>{listing.pickupWindow}</Text>
-              {distance !== null && (
-                <Text style={styles.distance}>{distance.toFixed(1)} km</Text>
-              )}
-              <PrimaryButton
-                label="Voir et réserver"
-                onPress={() =>
-                  navigation.navigate('ListingDetail', { listingId: listing.id })
-                }
-              />
-            </Card>
-          );
-        }}
+        renderItem={({ item }) => (
+          <Card style={styles.card}>
+            {item.imageUri && (
+              <Image source={{ uri: item.imageUri }} style={styles.image} />
+            )}
+            <Text style={styles.cardTitle}>{item.title}</Text>
+            <Text style={styles.cardText}>{item.variety}</Text>
+            <Text style={styles.cardText}>{item.pricePerKg} € / kg</Text>
+            <Text style={styles.cardText}>Stock : {item.stockKg} kg</Text>
+            <Text style={styles.cardMuted}>{item.location}</Text>
+            <Text style={styles.cardMuted}>{item.pickupWindow}</Text>
+            <PrimaryButton
+              label="Voir et réserver"
+              onPress={() => onOpenListing(item.id)}
+            />
+          </Card>
+        )}
       />
     </Screen>
   );
@@ -285,95 +166,70 @@ const styles = StyleSheet.create({
     paddingTop: spacing.lg,
     paddingHorizontal: spacing.lg,
   },
+  back: {
+    marginBottom: spacing.md,
+    marginTop: spacing.sm,
+  },
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginBottom: spacing.md,
+  },
+  headerText: {
+    flex: 1,
+  },
   title: {
-    fontSize: 22,
-    fontWeight: '700',
-    color: colors.text,
+    ...textStyles.h2,
+    marginBottom: spacing.xs,
+  },
+  subtitle: {
+    ...textStyles.caption,
+    color: colors.muted,
+  },
+  meta: {
+    ...textStyles.caption,
+    color: colors.muted,
+    marginBottom: spacing.sm,
+  },
+  searchRow: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    backgroundColor: colors.surface,
     marginBottom: spacing.md,
   },
   filterCard: {
     marginBottom: spacing.md,
   },
-  filterTitle: {
-    fontSize: 16,
-    fontWeight: '700',
+  sectionTitle: {
+    ...textStyles.h3,
+    marginBottom: spacing.sm,
+  },
+  statusCard: {
+    marginBottom: spacing.md,
+  },
+  statusItem: {
+    ...textStyles.caption,
+    marginBottom: spacing.xs,
+  },
+  searchInput: {
+    fontFamily: textStyles.body.fontFamily,
     color: colors.text,
-    marginBottom: spacing.sm,
-  },
-  filterActions: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-    flexWrap: 'wrap',
-    marginBottom: spacing.sm,
-  },
-  filterMeta: {
-    color: colors.muted,
-    fontSize: 12,
-    marginTop: spacing.xs,
-    marginBottom: spacing.sm,
-  },
-  filterRow: {
-    marginTop: spacing.xs,
-    marginBottom: spacing.sm,
-  },
-  favoriteToggle: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
-    paddingVertical: spacing.xs,
-    paddingHorizontal: spacing.sm,
-    borderRadius: radius.sm,
-    borderWidth: 1,
-    borderColor: colors.border,
-    alignSelf: 'flex-start',
-  },
-  favoriteToggleActive: {
-    borderColor: colors.danger,
-    backgroundColor: '#FCEDEA',
-  },
-  favoriteToggleText: {
-    fontSize: 12,
-    color: colors.text,
-  },
-  sortRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.sm,
-  },
-  sortChip: {
-    paddingVertical: spacing.xs,
-    paddingHorizontal: spacing.sm,
-    borderRadius: radius.sm,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  sortChipActive: {
-    borderColor: colors.primary,
-    backgroundColor: '#E0F1F4',
-  },
-  sortChipText: {
-    fontSize: 12,
-    color: colors.muted,
-  },
-  sortChipTextActive: {
-    color: colors.primaryDark,
-    fontWeight: '600',
-  },
-  notice: {
-    color: colors.muted,
-    fontSize: 12,
-    marginTop: spacing.xs,
   },
   list: {
-    paddingBottom: spacing.lg,
+    paddingBottom: spacing.xxl,
   },
   empty: {
-    color: colors.muted,
+    ...textStyles.caption,
     textAlign: 'center',
     marginTop: spacing.lg,
   },
   card: {
     marginBottom: spacing.md,
+    borderColor: 'rgba(226, 58, 46, 0.12)',
   },
   image: {
     width: '100%',
@@ -381,38 +237,17 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
     marginBottom: spacing.sm,
   },
-  rowBetween: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  rowEnd: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
-  },
-  favoriteButton: {
-    padding: spacing.xs,
-  },
   cardTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: colors.text,
-    flex: 1,
-    marginRight: spacing.xs,
+    ...textStyles.h3,
+    marginBottom: spacing.xs,
   },
   cardText: {
-    color: colors.text,
+    ...textStyles.body,
     marginTop: spacing.xs,
   },
   cardMuted: {
-    color: colors.muted,
+    ...textStyles.caption,
     marginTop: spacing.xs,
-  },
-  distance: {
-    color: colors.primaryDark,
-    fontWeight: '600',
-    marginTop: spacing.xs,
-    marginBottom: spacing.sm,
   },
 });
+

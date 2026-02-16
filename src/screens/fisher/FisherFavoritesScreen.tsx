@@ -5,7 +5,7 @@ import { Card } from '../../components/Card';
 import { Screen } from '../../components/Screen';
 import { Tag } from '../../components/Tag';
 import { useAppState } from '../../state/AppState';
-import { colors, radius, spacing } from '../../theme';
+import { colors, radius, spacing, textStyles } from '../../theme';
 
 export const FisherFavoritesScreen: React.FC = () => {
   const { listings, favorites, toggleFavorite } = useAppState();
@@ -49,6 +49,11 @@ export const FisherFavoritesScreen: React.FC = () => {
             <Text style={styles.cardText}>{item.variety}</Text>
             <Text style={styles.cardText}>{item.pricePerKg} € / kg</Text>
             <Text style={styles.cardText}>Stock : {item.stockKg} kg</Text>
+            <View style={styles.tagRow}>
+              {item.qualityTags.slice(0, 2).map((tag) => (
+                <Tag key={tag} label={tag} />
+              ))}
+            </View>
             <Text style={styles.cardMuted}>{item.location}</Text>
             <Text style={styles.cardMuted}>{item.pickupWindow}</Text>
           </Card>
@@ -64,21 +69,20 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
   },
   title: {
-    fontSize: 22,
-    fontWeight: '700',
-    color: colors.text,
+    ...textStyles.h2,
     marginBottom: spacing.md,
   },
   list: {
-    paddingBottom: spacing.lg,
+    paddingBottom: spacing.xxl,
   },
   empty: {
-    color: colors.muted,
+    ...textStyles.caption,
     textAlign: 'center',
     marginTop: spacing.lg,
   },
   card: {
     marginBottom: spacing.md,
+    borderColor: 'rgba(226, 58, 46, 0.12)',
   },
   image: {
     width: '100%',
@@ -100,18 +104,23 @@ const styles = StyleSheet.create({
     padding: spacing.xs,
   },
   cardTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: colors.text,
+    ...textStyles.h3,
     flex: 1,
     marginRight: spacing.xs,
   },
   cardText: {
-    color: colors.text,
+    ...textStyles.body,
     marginTop: spacing.xs,
   },
   cardMuted: {
-    color: colors.muted,
+    ...textStyles.caption,
+    marginTop: spacing.xs,
+  },
+  tagRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.xs,
     marginTop: spacing.xs,
   },
 });
+

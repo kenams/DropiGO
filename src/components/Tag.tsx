@@ -1,6 +1,6 @@
 ﻿import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import { colors, radius, spacing } from '../theme';
+import { colors, radius, spacing, textStyles } from '../theme';
 
 export const Tag: React.FC<{
   label: string;
@@ -23,23 +23,26 @@ export const Tag: React.FC<{
 const styles = StyleSheet.create({
   tag: {
     alignSelf: 'flex-start',
-    backgroundColor: '#E6F3F6',
+    backgroundColor: 'transparent',
     paddingHorizontal: spacing.sm,
     paddingVertical: spacing.xs,
     borderRadius: radius.sm,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
   success: {
-    backgroundColor: '#DDF3EA',
+    borderColor: colors.success,
   },
   warning: {
-    backgroundColor: '#FFF0D4',
+    borderColor: '#C59430',
   },
   danger: {
-    backgroundColor: '#F9D6D1',
+    borderColor: colors.danger,
   },
   text: {
-    fontSize: 12,
-    fontWeight: '600',
+    ...textStyles.bodyBold,
+    fontSize: 11,
     color: colors.primaryDark,
+    letterSpacing: 0.2,
   },
 });

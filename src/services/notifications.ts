@@ -1,7 +1,22 @@
 ﻿import { Platform } from 'react-native';
-import * as Notifications from 'expo-notifications';
+import Constants from 'expo-constants';
+
+const isExpoGo = Constants.appOwnership === 'expo';
+
+let Notifications: typeof import('expo-notifications') | null = null;
+if (!isExpoGo) {
+  try {
+    Notifications = require('expo-notifications');
+  } catch {
+    Notifications = null;
+  }
+}
 
 export const configureNotifications = async () => {
+  if (isExpoGo || !Notifications) {
+    return;
+  }
+
   Notifications.setNotificationHandler({
     handleNotification: async () => ({
       shouldShowAlert: true,
@@ -19,15 +34,20 @@ export const configureNotifications = async () => {
 
   if (Platform.OS === 'android') {
     await Notifications.setNotificationChannelAsync('default', {
-      name: 'DropiGO',
+      name: 'DroPiPêche',
       importance: Notifications.AndroidImportance.DEFAULT,
     });
   }
 };
 
 export const sendLocalNotification = async (title: string, body: string) => {
+  if (isExpoGo || !Notifications) {
+    return;
+  }
+
   await Notifications.scheduleNotificationAsync({
     content: { title, body, sound: false },
     trigger: null,
   });
 };
+

@@ -11,11 +11,10 @@ export const Card: React.FC<{ children: React.ReactNode; style?: ViewStyle }> = 
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: colors.surface,
+    backgroundColor: 'transparent',
     borderRadius: radius.lg,
-    padding: spacing.md,
+    padding: spacing.lg,
     borderWidth: 1,
     borderColor: colors.border,
-    ...shadow.card,
   },
 });

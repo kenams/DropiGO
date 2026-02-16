@@ -1,6 +1,6 @@
 ﻿import React from 'react';
 import { StyleSheet, Text, TextInput, View } from 'react-native';
-import { colors, radius, spacing } from '../theme';
+import { colors, radius, spacing, textStyles } from '../theme';
 
 export const Field: React.FC<{
   label: string;
@@ -8,16 +8,28 @@ export const Field: React.FC<{
   onChangeText: (value: string) => void;
   placeholder?: string;
   keyboardType?: 'default' | 'numeric' | 'email-address' | 'phone-pad';
-}> = ({ label, value, onChangeText, placeholder, keyboardType }) => {
+  secureTextEntry?: boolean;
+  onEndEditing?: () => void;
+}> = ({
+  label,
+  value,
+  onChangeText,
+  placeholder,
+  keyboardType,
+  secureTextEntry,
+  onEndEditing,
+}) => {
   return (
     <View style={styles.wrapper}>
       <Text style={styles.label}>{label}</Text>
       <TextInput
         value={value}
         onChangeText={onChangeText}
+        onEndEditing={onEndEditing}
         placeholder={placeholder}
         placeholderTextColor={colors.muted}
         keyboardType={keyboardType}
+        secureTextEntry={secureTextEntry}
         style={styles.input}
       />
     </View>
@@ -29,12 +41,11 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
   },
   label: {
-    fontSize: 13,
-    color: colors.muted,
+    ...textStyles.label,
     marginBottom: spacing.xs,
   },
   input: {
-    backgroundColor: colors.surface,
+    backgroundColor: colors.surfaceWarm,
     borderRadius: radius.md,
     borderWidth: 1,
     borderColor: colors.border,
@@ -42,5 +53,6 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
     fontSize: 16,
     color: colors.text,
+    fontFamily: textStyles.body.fontFamily,
   },
 });

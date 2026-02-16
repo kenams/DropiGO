@@ -1,69 +1,35 @@
-﻿import React from 'react';
-import { NativeModules, Platform, StyleSheet, Text, View } from 'react-native';
-import Constants from 'expo-constants';
-import { colors, radius, spacing } from '../theme';
-
-let MapView: any = null;
-let Marker: any = null;
-
-const isExpoGo = Constants.appOwnership === 'expo';
-const hasNativeModule =
-  Platform.OS === 'android'
-    ? Boolean(NativeModules.RNMapsAirModule)
-    : Boolean(NativeModules.AIRMapManager || NativeModules.RNMapsAirModule);
-
-if (!isExpoGo && hasNativeModule) {
-  try {
-    const maps = require('react-native-maps');
-    MapView = maps.default;
-    Marker = maps.Marker;
-  } catch {
-    // ignore
-  }
-}
+import React from 'react';
+import { Linking, Platform, StyleSheet, Text, View } from 'react-native';
+import { colors, radius, spacing, textStyles } from '../theme';
+import { GhostButton } from './Buttons';
 
 export const MapPreview: React.FC<{
   latitude: number;
   longitude: number;
 }> = ({ latitude, longitude }) => {
-  if (!MapView || !Marker) {
-    return (
-      <View style={styles.fallback}>
-        <Text style={styles.title}>Carte indisponible</Text>
-        <Text style={styles.subtitle}>
-          Ouvrez l'app avec un client de dev pour afficher la carte.
-        </Text>
-      </View>
-    );
-  }
+  const handleOpen = () => {
+    const lat = latitude.toFixed(6);
+    const lng = longitude.toFixed(6);
+    const url =
+      Platform.OS === 'ios'
+        ? `http://maps.apple.com/?ll=${lat},${lng}`
+        : `geo:${lat},${lng}?q=${lat},${lng}`;
+    Linking.openURL(url).catch(() => undefined);
+  };
 
   return (
-    <View style={styles.mapWrap}>
-      <MapView
-        style={styles.map}
-        initialRegion={{
-          latitude,
-          longitude,
-          latitudeDelta: 0.03,
-          longitudeDelta: 0.03,
-        }}
-      >
-        <Marker coordinate={{ latitude, longitude }} />
-      </MapView>
+    <View style={styles.fallback}>
+      <Text style={styles.title}>Point de rendez-vous</Text>
+      <Text style={styles.subtitle}>
+        Carte indisponible dans Expo Go. Ouvrez l&apos;itineraire dans
+        l&apos;application Maps.
+      </Text>
+      <GhostButton label="Ouvrir dans Maps" onPress={handleOpen} />
     </View>
   );
 };
 
 const styles = StyleSheet.create({
-  mapWrap: {
-    borderRadius: radius.md,
-    overflow: 'hidden',
-    marginBottom: spacing.md,
-  },
-  map: {
-    width: '100%',
-    height: 200,
-  },
   fallback: {
     borderRadius: radius.md,
     borderWidth: 1,
@@ -71,15 +37,13 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
     padding: spacing.md,
     marginBottom: spacing.md,
+    gap: spacing.sm,
   },
   title: {
+    ...textStyles.bodyBold,
     fontSize: 14,
-    fontWeight: '700',
-    color: colors.text,
-    marginBottom: spacing.xs,
   },
   subtitle: {
-    color: colors.muted,
-    fontSize: 12,
+    ...textStyles.caption,
   },
 });

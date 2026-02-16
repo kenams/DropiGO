@@ -1,11 +1,14 @@
 ﻿import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { GhostButton, PrimaryButton } from '../components/Buttons';
+import { BackButton } from '../components/BackButton';
 import { Card } from '../components/Card';
+import { Logo } from '../components/Logo';
 import { Screen } from '../components/Screen';
 import { Tag } from '../components/Tag';
 import { useAppState } from '../state/AppState';
-import { colors, spacing } from '../theme';
+import { exportSyncHistoryCsv } from '../services/csv';
+import { colors, spacing, textStyles } from '../theme';
 
 const formatDate = (value: string) => {
   const date = new Date(value);
@@ -17,28 +20,192 @@ const formatDate = (value: string) => {
   });
 };
 
-export const ProfileScreen: React.FC = () => {
+type Props = { onBack?: () => void };
+
+const ProfileContent: React.FC<Props> = ({ onBack }) => {
   const {
     role,
-    setRole,
+    signOut,
     resetApp,
     isOnline,
     queue,
     syncHistory,
     syncQueue,
+    fisherProfile,
+    fisherStatus,
+    buyerProfile,
+    buyerStatus,
+    fisherApplicants,
+    buyerApplicants,
+    updateFisherApplicantStatus,
+    updateBuyerApplicantStatus,
+    reservations,
+    resolveDispute,
   } = useAppState();
   const pendingCount = queue.length;
+  const disputeItems = reservations.filter((item) => item.escrowStatus === 'hold');
+  const escrowActiveCount = reservations.filter(
+    (item) => item.escrowStatus === 'escrowed'
+  ).length;
+
+  const exportHistory = async () => {
+    if (syncHistory.length === 0) {
+      return;
+    }
+    await exportSyncHistoryCsv(syncHistory);
+  };
 
   return (
     <Screen scroll style={styles.container}>
+      {onBack && <BackButton onPress={onBack} style={styles.back} />}
+      <Logo size={72} showWordmark={false} compact />
       <Text style={styles.title}>Mon profil</Text>
+
       <Card style={styles.card}>
         <Text style={styles.label}>Rôle actuel</Text>
         <Text style={styles.value}>
-          {role === 'fisher' ? 'Pêcheur' : 'Acheteur / Restaurateur'}
+          {role === 'fisher' ? 'Pêcheur professionnel' : 'Acheteur professionnel'}
         </Text>
         <Text style={styles.label}>Paiement</Text>
-        <Text style={styles.value}>Au pickup</Text>
+        <Text style={styles.value}>Séquestre DroPiPêche</Text>
+
+        {role === 'fisher' && (
+          <>
+            <Text style={styles.label}>Identité</Text>
+            <Text style={styles.value}>{fisherProfile.name || '—'}</Text>
+            <Text style={styles.value}>
+              {fisherProfile.boat || 'Bateau non renseigné'}
+            </Text>
+            <Text style={styles.value}>
+              {fisherProfile.port || 'Port non renseigné'}
+            </Text>
+            <Text style={styles.value}>
+              {fisherProfile.phone || 'Téléphone non renseigné'}
+            </Text>
+            <Text style={styles.label}>Statut KYC</Text>
+            <Text style={styles.value}>
+              {fisherStatus === 'approved'
+                ? 'Validé'
+                : fisherStatus === 'pending'
+                ? 'En attente'
+                : 'À compléter'}
+            </Text>
+          </>
+        )}
+
+        {role === 'buyer' && (
+          <>
+            <Text style={styles.label}>Société</Text>
+            <Text style={styles.value}>{buyerProfile.company || '—'}</Text>
+            <Text style={styles.value}>
+              {buyerProfile.activity || 'Activité non renseignée'}
+            </Text>
+            <Text style={styles.value}>
+              {buyerProfile.phone || 'Téléphone non renseigné'}
+            </Text>
+            <Text style={styles.value}>
+              {buyerProfile.email || 'Email non renseigné'}
+            </Text>
+            <Text style={styles.label}>Statut KYC</Text>
+            <Text style={styles.value}>
+              {buyerStatus === 'approved'
+                ? 'Validé'
+                : buyerStatus === 'pending'
+                ? 'En attente'
+                : 'À compléter'}
+            </Text>
+          </>
+        )}
+      </Card>
+
+      <Card style={styles.card}>
+        <Text style={styles.sectionTitle}>Admin (démo)</Text>
+        <View style={styles.rowBetween}>
+          <Text style={styles.label}>Transactions</Text>
+          <Text style={styles.value}>{reservations.length}</Text>
+        </View>
+        <View style={styles.rowBetween}>
+          <Text style={styles.label}>Séquestres actifs</Text>
+          <Text style={styles.value}>{escrowActiveCount}</Text>
+        </View>
+        <View style={styles.rowBetween}>
+          <Text style={styles.label}>Litiges en cours</Text>
+          <Text style={styles.value}>{disputeItems.length}</Text>
+        </View>
+
+        <Text style={styles.subTitle}>Pêcheurs en attente</Text>
+        {fisherApplicants.filter((item) => item.status === 'pending').length === 0 ? (
+          <Text style={styles.empty}>Aucun dossier en attente.</Text>
+        ) : (
+          fisherApplicants
+            .filter((item) => item.status === 'pending')
+            .slice(0, 2)
+            .map((item) => (
+              <View key={item.id} style={styles.adminRow}>
+                <Text style={styles.value}>{item.name}</Text>
+                <View style={styles.adminActions}>
+                  <GhostButton
+                    label="Valider"
+                    onPress={() => updateFisherApplicantStatus(item.id, 'approved')}
+                  />
+                  <GhostButton
+                    label="Refuser"
+                    onPress={() => updateFisherApplicantStatus(item.id, 'rejected')}
+                  />
+                </View>
+              </View>
+            ))
+        )}
+
+        <Text style={styles.subTitle}>Acheteurs en attente</Text>
+        {buyerApplicants.filter((item) => item.status === 'pending').length === 0 ? (
+          <Text style={styles.empty}>Aucun dossier en attente.</Text>
+        ) : (
+          buyerApplicants
+            .filter((item) => item.status === 'pending')
+            .slice(0, 2)
+            .map((item) => (
+              <View key={item.id} style={styles.adminRow}>
+                <Text style={styles.value}>{item.company}</Text>
+                <View style={styles.adminActions}>
+                  <GhostButton
+                    label="Valider"
+                    onPress={() => updateBuyerApplicantStatus(item.id, 'approved')}
+                  />
+                  <GhostButton
+                    label="Refuser"
+                    onPress={() => updateBuyerApplicantStatus(item.id, 'rejected')}
+                  />
+                </View>
+              </View>
+            ))
+        )}
+
+        <Text style={styles.subTitle}>Litiges</Text>
+        {disputeItems.length === 0 ? (
+          <Text style={styles.empty}>Aucun litige à traiter.</Text>
+        ) : (
+          disputeItems.slice(0, 2).map((item) => (
+            <View key={item.id} style={styles.disputeRow}>
+              <Text style={styles.value}>{item.listingTitle}</Text>
+              <Text style={styles.caption}>Acheteur : {item.buyerName}</Text>
+              <View style={styles.disputeActions}>
+                <GhostButton
+                  label="Rembourser"
+                  onPress={() => resolveDispute(item.id, 'refund_buyer')}
+                />
+                <GhostButton
+                  label="Payer pêcheur"
+                  onPress={() => resolveDispute(item.id, 'pay_fisher')}
+                />
+                <GhostButton
+                  label="Partager"
+                  onPress={() => resolveDispute(item.id, 'split')}
+                />
+              </View>
+            </View>
+          ))
+        )}
       </Card>
 
       <Card style={styles.card}>
@@ -83,47 +250,65 @@ export const ProfileScreen: React.FC = () => {
                 <Text style={styles.historyDate}>{formatDate(item.syncedAt)}</Text>
               </View>
             ))}
+            <View style={styles.historyActions}>
+              <GhostButton label="Exporter en CSV" onPress={exportHistory} />
+            </View>
           </View>
         )}
       </Card>
 
-      <PrimaryButton label="Changer de rôle" onPress={() => setRole(null)} />
+      <PrimaryButton label="Changer de compte" onPress={signOut} />
       <View style={styles.spacer} />
       <GhostButton label="Réinitialiser la démo" onPress={resetApp} />
       <View style={styles.spacer} />
-      <GhostButton label="Déconnexion" onPress={() => setRole(null)} />
+      <GhostButton label="Déconnexion" onPress={signOut} />
     </Screen>
   );
+};
+
+export const ProfileScreen: React.FC = () => {
+  return <ProfileContent />;
+};
+
+export const ProfileStandalone: React.FC<Props> = ({ onBack }) => {
+  return <ProfileContent onBack={onBack} />;
 };
 
 const styles = StyleSheet.create({
   container: {
     padding: spacing.lg,
   },
+  back: {
+    marginBottom: spacing.md,
+    marginTop: spacing.sm,
+  },
   title: {
-    fontSize: 22,
-    fontWeight: '700',
-    color: colors.text,
+    ...textStyles.h2,
     marginBottom: spacing.md,
   },
   card: {
     marginBottom: spacing.lg,
   },
   label: {
-    color: colors.muted,
-    fontSize: 12,
+    ...textStyles.label,
     marginTop: spacing.sm,
   },
   value: {
-    color: colors.text,
-    fontSize: 16,
-    fontWeight: '600',
+    ...textStyles.bodyBold,
+  },
+  caption: {
+    ...textStyles.caption,
+    color: colors.muted,
+    marginTop: spacing.xs,
   },
   sectionTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: colors.text,
+    ...textStyles.h3,
     marginBottom: spacing.sm,
+  },
+  subTitle: {
+    ...textStyles.bodyBold,
+    marginTop: spacing.md,
+    marginBottom: spacing.xs,
   },
   rowBetween: {
     flexDirection: 'row',
@@ -131,11 +316,28 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     marginBottom: spacing.sm,
   },
+  adminRow: {
+    marginBottom: spacing.sm,
+  },
+  adminActions: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    marginTop: spacing.xs,
+  },
+  disputeRow: {
+    marginBottom: spacing.md,
+  },
+  disputeActions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+    marginTop: spacing.xs,
+  },
   queueList: {
     marginBottom: spacing.md,
   },
   queueItem: {
-    color: colors.text,
+    ...textStyles.body,
     fontSize: 13,
     marginTop: spacing.xs,
   },
@@ -148,15 +350,17 @@ const styles = StyleSheet.create({
     borderBottomColor: colors.border,
   },
   historyText: {
-    color: colors.text,
-    fontSize: 14,
+    ...textStyles.body,
   },
   historyDate: {
-    color: colors.muted,
-    fontSize: 12,
+    ...textStyles.caption,
     marginTop: spacing.xs,
   },
+  historyActions: {
+    marginTop: spacing.md,
+  },
   empty: {
+    ...textStyles.caption,
     color: colors.muted,
   },
   spacer: {

@@ -1,15 +1,30 @@
 ﻿import React from 'react';
 import { FlatList, StyleSheet, Text, View } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
+import { StackNavigationProp } from '@react-navigation/stack';
 import { GhostButton, PrimaryButton } from '../../components/Buttons';
+import { BackButton } from '../../components/BackButton';
 import { Card } from '../../components/Card';
+import { CompensationNotice } from '../../components/CompensationNotice';
+import { ReservationTimeline } from '../../components/ReservationTimeline';
 import { Screen } from '../../components/Screen';
 import { Tag } from '../../components/Tag';
+import { compensationPolicy } from '../../services/compensation';
 import { useAppState } from '../../state/AppState';
 import { exportPickupReceipt } from '../../services/pdf';
-import { colors, spacing } from '../../theme';
+import { colors, spacing, textStyles } from '../../theme';
+import { BuyerStackParamList } from '../../navigation/types';
 
-export const BuyerReservationsScreen: React.FC = () => {
-  const { reservations, updateReservationStatus, listings } = useAppState();
+type Props = { onBack?: () => void; onOpenTracking?: (id: string) => void };
+
+const BuyerReservationsContent: React.FC<Props> = ({ onBack, onOpenTracking }) => {
+  const {
+    reservations,
+    listings,
+    requestBuyerArrival,
+    declareDelay,
+    cancelAfterArrival,
+  } = useAppState();
 
   const handleExport = async (reservationId: string) => {
     const reservation = reservations.find((item) => item.id === reservationId);
@@ -24,71 +39,200 @@ export const BuyerReservationsScreen: React.FC = () => {
       buyerName: reservation.buyerName,
       fisherName: listing?.fisherName ?? 'Pêcheur',
       location: listing?.location ?? 'Lieu non défini',
+      checkoutId: reservation.checkoutId,
     });
   };
 
+  const ratePercent = Math.round(compensationPolicy.rate * 100);
+
   return (
     <Screen style={styles.container}>
+      {onBack && <BackButton onPress={onBack} style={styles.back} />}
       <Text style={styles.title}>Mes réservations</Text>
       <FlatList
         data={reservations}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.list}
-        renderItem={({ item }) => (
-          <Card style={styles.card}>
-            <View style={styles.rowBetween}>
-              <Text style={styles.cardTitle}>{item.listingTitle}</Text>
-              <Tag
-                label={
-                  item.status === 'pending'
-                    ? 'En attente'
-                    : item.status === 'confirmed'
-                    ? 'Confirmée'
-                    : item.status === 'rejected'
-                    ? 'Refusée'
-                    : 'Livrée'
-                }
-                tone={
-                  item.status === 'picked_up'
-                    ? 'success'
-                    : item.status === 'confirmed'
-                    ? 'success'
-                    : item.status === 'rejected'
-                    ? 'danger'
-                    : 'warning'
-                }
-              />
-            </View>
-            <Text style={styles.cardText}>Quantité : {item.qtyKg} kg</Text>
-            <Text style={styles.cardText}>Pickup : {item.pickupTime}</Text>
-            {item.status === 'pending' && (
-              <Text style={styles.pendingText}>
-                En attente de confirmation du pêcheur.
+        renderItem={({ item }) => {
+          const statusLabel =
+            item.status === 'pending'
+              ? 'En attente'
+              : item.status === 'confirmed'
+              ? 'Confirmée'
+              : item.status === 'rejected'
+              ? item.cancellationBy
+                ? item.cancellationBy === 'fisher'
+                  ? 'Annulée (pêcheur)'
+                  : 'Annulée (acheteur)'
+                : 'Refusée'
+              : 'Livrée';
+          const statusTone =
+            item.status === 'picked_up'
+              ? 'success'
+              : item.status === 'confirmed'
+              ? 'success'
+              : item.status === 'rejected'
+              ? 'danger'
+              : 'warning';
+
+          const escrowLabel =
+            item.escrowStatus === 'released'
+              ? 'Paiement débloqué'
+              : item.escrowStatus === 'escrowed'
+              ? 'Séquestre actif'
+              : item.escrowStatus === 'hold'
+              ? 'Litige en cours'
+              : item.escrowStatus === 'refunded'
+              ? 'Remboursé'
+              : 'Non payé';
+          const escrowTone =
+            item.escrowStatus === 'released'
+              ? 'success'
+              : item.escrowStatus === 'hold'
+              ? 'danger'
+              : item.escrowStatus === 'refunded'
+              ? 'warning'
+              : item.escrowStatus === 'escrowed'
+              ? 'success'
+              : 'warning';
+
+          const deliveryLabel =
+            item.deliveryStatus === 'approaching_port'
+              ? 'Approche du port'
+              : item.deliveryStatus === 'arrived'
+              ? 'Arrivé au port'
+              : item.deliveryStatus === 'delivered'
+              ? 'Remis'
+              : 'En mer';
+
+          const conformityLabel =
+            item.buyerConformity === 'conform'
+              ? 'Conforme'
+              : item.buyerConformity === 'non_conform'
+              ? 'Non conforme'
+              : 'En attente';
+
+          return (
+            <Card style={styles.card}>
+              <View style={styles.rowBetween}>
+                <Text style={styles.cardTitle}>{item.listingTitle}</Text>
+                <Tag label={statusLabel} tone={statusTone} />
+              </View>
+              <Text style={styles.cardText}>Quantité : {item.qtyKg} kg</Text>
+              <Text style={styles.cardText}>Retrait : {item.pickupTime}</Text>
+              <Text style={styles.cardText}>
+                Total estimé : {item.totalPrice.toFixed(2)} €
               </Text>
-            )}
-            {item.status === 'rejected' && (
+              <Text style={styles.pendingText}>Séquestre : {escrowLabel}</Text>
+              <Text style={styles.pendingText}>Suivi : {deliveryLabel}</Text>
               <Text style={styles.pendingText}>
-                Réservation refusée par le pêcheur.
+                Conformité : {conformityLabel}
               </Text>
-            )}
-            <View style={styles.actions}>
+              {item.note && (
+                <Text style={styles.pendingText}>Note : {item.note}</Text>
+              )}
+              <View style={styles.paymentRow}>
+                <Tag
+                  label={escrowLabel}
+                  tone={escrowTone}
+                />
+              </View>
+              <ReservationTimeline status={item.status} />
+              {item.status === 'pending' && (
+                <Text style={styles.pendingText}>
+                  En attente de confirmation du pêcheur.
+                </Text>
+              )}
+              {item.status === 'rejected' && (
+                <Text style={styles.pendingText}>
+                  {item.cancellationBy === 'buyer'
+                    ? 'Réservation annulée par l\'acheteur.'
+                    : item.cancellationBy === 'fisher'
+                    ? 'Réservation annulée par le pêcheur.'
+                    : 'Réservation refusée par le pêcheur.'}
+                </Text>
+              )}
+              {item.compensation && (
+                <CompensationNotice compensation={item.compensation} viewerRole="buyer" />
+              )}
+
               {item.status === 'confirmed' && (
-                <PrimaryButton
-                  label="Confirmer la réception"
-                  onPress={() => updateReservationStatus(item.id, 'picked_up')}
-                />
+                <View style={styles.arrivalBox}>
+                  <Text style={styles.sectionTitle}>Arrivée au point de RDV</Text>
+                  {!item.buyerArrivalRequestedAt && (
+                    <PrimaryButton
+                      label="Je suis arrivé au point de RDV"
+                      onPress={() => requestBuyerArrival(item.id)}
+                    />
+                  )}
+                  {item.buyerArrivalRequestedAt && !item.buyerArrivalConfirmedAt && (
+                    <Text style={styles.pendingText}>
+                      Arrivée signalée. En attente de confirmation du pêcheur.
+                    </Text>
+                  )}
+                  {item.buyerArrivalConfirmedAt && (
+                    <Text style={styles.confirmText}>
+                      Arrivée confirmée par le pêcheur.
+                    </Text>
+                  )}
+                  {item.buyerArrivalConfirmedAt && !item.compensation && (
+                    <View style={styles.incidentActions}>
+                      <GhostButton
+                        label="Signaler retard du pêcheur"
+                        onPress={() => declareDelay(item.id, 'fisher')}
+                      />
+                      <GhostButton
+                        label="Pêcheur a annulé"
+                        onPress={() => cancelAfterArrival(item.id, 'fisher')}
+                      />
+                    </View>
+                  )}
+                  <Text style={styles.policyText}>
+                    Barème : {ratePercent}% du total, min {compensationPolicy.min} €, max{' '}
+                    {compensationPolicy.max} € (retard &gt; {compensationPolicy.lateThresholdMinutes} min).
+                  </Text>
+                </View>
               )}
-              {(item.status === 'confirmed' || item.status === 'picked_up') && (
-                <GhostButton
-                  label="Télécharger le bon de retrait (PDF)"
-                  onPress={() => handleExport(item.id)}
-                />
-              )}
-            </View>
-          </Card>
-        )}
+
+              <View style={styles.actions}>
+                {onOpenTracking && (
+                  <GhostButton
+                    label="Suivre la commande"
+                    onPress={() => onOpenTracking(item.id)}
+                  />
+                )}
+                {item.status !== 'rejected' && (
+                  <GhostButton
+                    label="Télécharger le bon de retrait (PDF)"
+                    onPress={() => handleExport(item.id)}
+                  />
+                )}
+              </View>
+            </Card>
+          );
+        }}
       />
     </Screen>
+  );
+};
+
+export const BuyerReservationsScreen: React.FC = () => {
+  const navigation = useNavigation<StackNavigationProp<BuyerStackParamList>>();
+  return (
+    <BuyerReservationsContent
+      onOpenTracking={(id) =>
+        navigation.navigate('OrderTracking', { reservationId: id })
+      }
+    />
+  );
+};
+
+export const BuyerReservationsStandalone: React.FC<Props> = ({
+  onBack,
+  onOpenTracking,
+}) => {
+  return (
+    <BuyerReservationsContent onBack={onBack} onOpenTracking={onOpenTracking} />
   );
 };
 
@@ -97,14 +241,16 @@ const styles = StyleSheet.create({
     paddingTop: spacing.lg,
     paddingHorizontal: spacing.lg,
   },
+  back: {
+    marginBottom: spacing.md,
+    marginTop: spacing.sm,
+  },
   title: {
-    fontSize: 22,
-    fontWeight: '700',
-    color: colors.text,
+    ...textStyles.h2,
     marginBottom: spacing.md,
   },
   list: {
-    paddingBottom: spacing.lg,
+    paddingBottom: spacing.xxl,
   },
   card: {
     marginBottom: spacing.md,
@@ -116,19 +262,47 @@ const styles = StyleSheet.create({
     marginBottom: spacing.sm,
   },
   cardTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: colors.text,
+    ...textStyles.h3,
   },
   cardText: {
-    color: colors.text,
+    ...textStyles.body,
     marginBottom: spacing.xs,
   },
   pendingText: {
-    color: colors.muted,
+    ...textStyles.caption,
+    marginBottom: spacing.sm,
+  },
+  confirmText: {
+    ...textStyles.caption,
+    color: colors.success,
+    marginBottom: spacing.sm,
+  },
+  paymentRow: {
     marginBottom: spacing.sm,
   },
   actions: {
     gap: spacing.sm,
   },
+  arrivalBox: {
+    marginTop: spacing.sm,
+    padding: spacing.sm,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: 'transparent',
+  },
+  incidentActions: {
+    gap: spacing.xs,
+    marginBottom: spacing.sm,
+  },
+  sectionTitle: {
+    ...textStyles.bodyBold,
+    marginBottom: spacing.sm,
+  },
+  policyText: {
+    ...textStyles.caption,
+    color: colors.muted,
+  },
 });
+
+

@@ -1,4 +1,4 @@
-﻿import React, { useCallback } from 'react';
+﻿import React, { useCallback, useEffect } from 'react';
 import { FlatList, StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { GhostButton } from '../components/Buttons';
@@ -6,7 +6,7 @@ import { Card } from '../components/Card';
 import { Screen } from '../components/Screen';
 import { Tag } from '../components/Tag';
 import { useAppState } from '../state/AppState';
-import { colors, spacing } from '../theme';
+import { colors, spacing, textStyles } from '../theme';
 
 const formatDate = (value: string) => {
   const date = new Date(value);
@@ -18,16 +18,19 @@ const formatDate = (value: string) => {
   });
 };
 
-export const NotificationsScreen: React.FC = () => {
+const NotificationsContent: React.FC<{ autoMarkRead: boolean }> = ({
+  autoMarkRead,
+}) => {
   const { notifications, markAllNotificationsRead } = useAppState();
 
-  useFocusEffect(
-    useCallback(() => {
-      if (notifications.some((item) => !item.read)) {
-        markAllNotificationsRead();
-      }
-    }, [notifications, markAllNotificationsRead])
-  );
+  useEffect(() => {
+    if (!autoMarkRead) {
+      return;
+    }
+    if (notifications.some((item) => !item.read)) {
+      markAllNotificationsRead();
+    }
+  }, [autoMarkRead, notifications, markAllNotificationsRead]);
 
   return (
     <Screen style={styles.container}>
@@ -64,6 +67,24 @@ export const NotificationsScreen: React.FC = () => {
   );
 };
 
+export const NotificationsScreen: React.FC = () => {
+  const { notifications, markAllNotificationsRead } = useAppState();
+
+  useFocusEffect(
+    useCallback(() => {
+      if (notifications.some((item) => !item.read)) {
+        markAllNotificationsRead();
+      }
+    }, [notifications, markAllNotificationsRead])
+  );
+
+  return <NotificationsContent autoMarkRead={false} />;
+};
+
+export const NotificationsStandalone: React.FC = () => {
+  return <NotificationsContent autoMarkRead />;
+};
+
 const styles = StyleSheet.create({
   container: {
     paddingTop: spacing.lg,
@@ -77,12 +98,10 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
   },
   title: {
-    fontSize: 22,
-    fontWeight: '700',
-    color: colors.text,
+    ...textStyles.h2,
   },
   list: {
-    paddingBottom: spacing.lg,
+    paddingBottom: spacing.xxl,
   },
   card: {
     marginBottom: spacing.md,
@@ -94,19 +113,17 @@ const styles = StyleSheet.create({
     marginBottom: spacing.xs,
   },
   cardTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: colors.text,
+    ...textStyles.h3,
   },
   cardBody: {
-    color: colors.text,
+    ...textStyles.body,
   },
   cardTime: {
-    color: colors.muted,
-    fontSize: 12,
+    ...textStyles.caption,
     marginTop: spacing.xs,
   },
   empty: {
-    color: colors.muted,
+    ...textStyles.caption,
   },
 });
+

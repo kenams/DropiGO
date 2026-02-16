@@ -1,7 +1,7 @@
-{
+﻿{
   "expo": {
-    "name": "DropiGO",
-    "slug": "DropiGO",
+    "name": "DroPiPêche",
+    "slug": "dropipeche",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -16,11 +16,11 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.dropigo.app",
       "infoPlist": {
-        "NSCameraUsageDescription": "DropiGO a besoin de la camera pour prendre une photo de la peche.",
-        "NSPhotoLibraryUsageDescription": "DropiGO a besoin d'acceder a vos photos pour publier une peche.",
-        "NSPhotoLibraryAddUsageDescription": "DropiGO peut enregistrer des photos dans votre galerie.",
-        "NSLocationWhenInUseUsageDescription": "DropiGO utilise votre position pour proposer un point de rendez-vous.",
-        "NSLocationAlwaysAndWhenInUseUsageDescription": "DropiGO utilise votre position pour proposer un point de rendez-vous."
+        "NSCameraUsageDescription": "DroPiPêche a besoin de la camera pour prendre une photo de la peche.",
+        "NSPhotoLibraryUsageDescription": "DroPiPêche a besoin d'acceder a vos photos pour publier une peche.",
+        "NSPhotoLibraryAddUsageDescription": "DroPiPêche peut enregistrer des photos dans votre galerie.",
+        "NSLocationWhenInUseUsageDescription": "DroPiPêche utilise votre position pour proposer un point de rendez-vous.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "DroPiPêche utilise votre position pour proposer un point de rendez-vous."
       }
     },
     "android": {
@@ -46,21 +46,21 @@
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
-      "expo-dev-client",
       [
         "expo-image-picker",
         {
-          "photosPermission": "DropiGO a besoin d'acceder a vos photos pour publier une peche.",
-          "cameraPermission": "DropiGO a besoin de la camera pour prendre une photo de la peche."
+          "photosPermission": "DroPiPêche a besoin d'acceder a vos photos pour publier une peche.",
+          "cameraPermission": "DroPiPêche a besoin de la camera pour prendre une photo de la peche."
         }
       ],
       [
         "expo-location",
         {
-          "locationAlwaysAndWhenInUsePermission": "DropiGO utilise votre position pour proposer un point de rendez-vous."
+          "locationAlwaysAndWhenInUsePermission": "DroPiPêche utilise votre position pour proposer un point de rendez-vous."
         }
       ],
-      "expo-notifications"
+      "expo-notifications",
+      "expo-font"
     ],
     "extra": {
       "eas": {
@@ -69,3 +69,4 @@
     }
   }
 }
+

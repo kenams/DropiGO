@@ -1,25 +1,43 @@
 ﻿import React from 'react';
-import { StyleSheet, Text } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { PrimaryButton } from '../components/Buttons';
 import { Card } from '../components/Card';
+import { Logo } from '../components/Logo';
 import { Screen } from '../components/Screen';
-import { colors, spacing } from '../theme';
+import { colors, spacing, textStyles } from '../theme';
 import { useAppState } from '../state/AppState';
 
-export const RoleSelectScreen: React.FC = () => {
+export const RoleSelectScreen: React.FC<{ onBack?: () => void }> = ({
+  onBack,
+}) => {
   const { setRole } = useAppState();
 
   return (
-    <Screen style={styles.container}>
-      <Text style={styles.title}>Bienvenue sur DropiGO</Text>
-      <Text style={styles.subtitle}>Choisissez votre profil pour commencer.</Text>
+    <Screen scroll style={styles.container}>
+      {onBack && (
+        <View style={styles.backRow}>
+          <Pressable onPress={onBack} style={styles.backButton}>
+            <Ionicons name="arrow-back" size={18} color={colors.primaryDark} />
+            <Text style={styles.backLabel}>Retour</Text>
+          </Pressable>
+        </View>
+      )}
+      <Logo size={120} />
+      <Text style={styles.subtitle}>
+        Mise en relation directe avec paiement séquestré sécurisé.
+      </Text>
 
       <Card style={styles.card}>
         <Text style={styles.cardTitle}>Je suis pêcheur</Text>
         <Text style={styles.cardBody}>
           Publiez votre pêche du jour et recevez des réservations directes.
         </Text>
-        <PrimaryButton label="Continuer" onPress={() => setRole('fisher')} />
+        <PrimaryButton
+          label="Continuer"
+          tone="accent"
+          onPress={() => setRole('fisher')}
+        />
       </Card>
 
       <Card style={styles.card}>
@@ -31,7 +49,7 @@ export const RoleSelectScreen: React.FC = () => {
       </Card>
 
       <Text style={styles.footer}>
-        Paiement au pickup • Validation manuelle des pêcheurs
+        Paiement séquestré • Validation KYC pêcheurs & acheteurs
       </Text>
     </Screen>
   );
@@ -41,34 +59,47 @@ const styles = StyleSheet.create({
   container: {
     padding: spacing.lg,
   },
-  title: {
-    fontSize: 28,
-    fontWeight: '700',
-    color: colors.text,
-    marginBottom: spacing.xs,
+  backRow: {
+    marginBottom: spacing.md,
+  },
+  backButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    alignSelf: 'flex-start',
+    paddingVertical: spacing.xs,
+    paddingHorizontal: spacing.sm,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: 'transparent',
+  },
+  backLabel: {
+    ...textStyles.caption,
+    color: colors.primaryDark,
   },
   subtitle: {
+    ...textStyles.body,
     color: colors.muted,
     marginBottom: spacing.lg,
-    fontSize: 15,
+    textAlign: 'center',
   },
   card: {
     marginBottom: spacing.lg,
   },
   cardTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: colors.text,
+    ...textStyles.h3,
   },
   cardBody: {
     marginTop: spacing.sm,
     marginBottom: spacing.md,
+    ...textStyles.body,
     color: colors.muted,
     lineHeight: 20,
   },
   footer: {
     textAlign: 'center',
-    color: colors.muted,
-    fontSize: 12,
+    ...textStyles.caption,
   },
 });
+

@@ -1,22 +1,36 @@
 ﻿import React from 'react';
-import { FlatList, Image, Pressable, StyleSheet, Text, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { FlatList, Image, StyleSheet, Text, View } from 'react-native';
 import { Card } from '../../components/Card';
+import { Logo } from '../../components/Logo';
 import { Screen } from '../../components/Screen';
 import { Tag } from '../../components/Tag';
+import { BackButton } from '../../components/BackButton';
 import { useAppState } from '../../state/AppState';
-import { colors, spacing } from '../../theme';
+import { colors, radius, spacing, textStyles } from '../../theme';
 
+// Simple fisher dashboard for the MVP demo.
 export const FisherHomeScreen: React.FC = () => {
-  const { listings, favorites, toggleFavorite } = useAppState();
+  const { listings, signOut } = useAppState();
 
   return (
     <Screen style={styles.container}>
-      <Text style={styles.title}>Mes pêches du jour</Text>
+      <BackButton onPress={signOut} style={styles.back} />
+      <View style={styles.headerRow}>
+        <Logo size={64} showWordmark={false} compact />
+        <View style={styles.headerText}>
+          <Text style={styles.title}>Mes pêches du jour</Text>
+          <Text style={styles.subtitle}>Ventes directes sans intermédiaires</Text>
+        </View>
+      </View>
+      <Text style={styles.meta}>Données chargées : {listings.length} pêches</Text>
+
       <FlatList
         data={listings}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.list}
+        ListEmptyComponent={
+          <Text style={styles.empty}>Aucune annonce pour le moment.</Text>
+        }
         renderItem={({ item }) => (
           <Card style={styles.card}>
             {item.imageUri && (
@@ -24,19 +38,7 @@ export const FisherHomeScreen: React.FC = () => {
             )}
             <View style={styles.rowBetween}>
               <Text style={styles.cardTitle}>{item.title}</Text>
-              <View style={styles.rowEnd}>
-                <Pressable
-                  onPress={() => toggleFavorite(item.id)}
-                  style={styles.favoriteButton}
-                >
-                  <Ionicons
-                    name={favorites.includes(item.id) ? 'heart' : 'heart-outline'}
-                    size={18}
-                    color={favorites.includes(item.id) ? colors.danger : colors.muted}
-                  />
-                </Pressable>
-                <Tag label={item.status === 'active' ? 'Active' : 'Clôturée'} />
-              </View>
+              <Tag label={item.status === 'active' ? 'Active' : 'Clôturée'} />
             </View>
             <Text style={styles.cardText}>{item.variety}</Text>
             <Text style={styles.cardText}>{item.pricePerKg} € / kg</Text>
@@ -55,22 +57,48 @@ const styles = StyleSheet.create({
     paddingTop: spacing.lg,
     paddingHorizontal: spacing.lg,
   },
-  title: {
-    fontSize: 22,
-    fontWeight: '700',
-    color: colors.text,
+  back: {
+    marginBottom: spacing.md,
+    marginTop: spacing.sm,
+  },
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
     marginBottom: spacing.md,
   },
+  headerText: {
+    flex: 1,
+  },
+  title: {
+    ...textStyles.h2,
+    marginBottom: spacing.xs,
+  },
+  subtitle: {
+    ...textStyles.caption,
+    color: colors.muted,
+  },
+  meta: {
+    ...textStyles.caption,
+    color: colors.muted,
+    marginBottom: spacing.sm,
+  },
   list: {
-    paddingBottom: spacing.lg,
+    paddingBottom: spacing.xxl,
+  },
+  empty: {
+    ...textStyles.caption,
+    textAlign: 'center',
+    marginTop: spacing.lg,
   },
   card: {
     marginBottom: spacing.md,
+    borderColor: 'rgba(226, 58, 46, 0.12)',
   },
   image: {
     width: '100%',
     height: 140,
-    borderRadius: 12,
+    borderRadius: radius.md,
     marginBottom: spacing.sm,
   },
   rowBetween: {
@@ -78,25 +106,16 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
   },
-  rowEnd: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
-  },
-  favoriteButton: {
-    padding: spacing.xs,
-  },
   cardTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: colors.text,
+    ...textStyles.h3,
   },
   cardText: {
-    color: colors.text,
+    ...textStyles.body,
     marginTop: spacing.xs,
   },
   cardMuted: {
-    color: colors.muted,
+    ...textStyles.caption,
     marginTop: spacing.xs,
   },
 });
+

@@ -1,21 +1,23 @@
-﻿import React from 'react';
+﻿import React, { useState } from 'react';
 import { NavigationContainer, DefaultTheme } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import { createStackNavigator } from '@react-navigation/stack';
+import { RouteProp } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
-import { RoleSelectScreen } from '../screens/RoleSelectScreen';
 import { OnboardingScreen } from '../screens/fisher/OnboardingScreen';
 import { FisherHomeScreen } from '../screens/fisher/FisherHomeScreen';
 import { CreateListingScreen } from '../screens/fisher/CreateListingScreen';
 import { FisherReservationsScreen } from '../screens/fisher/FisherReservationsScreen';
-import { FisherFavoritesScreen } from '../screens/fisher/FisherFavoritesScreen';
 import { BuyerHomeScreen } from '../screens/buyer/BuyerHomeScreen';
-import { FavoritesScreen } from '../screens/buyer/FavoritesScreen';
 import { ListingDetailScreen } from '../screens/buyer/ListingDetailScreen';
+import { BuyerOnboardingScreen } from '../screens/buyer/BuyerOnboardingScreen';
+import { CartScreen } from '../screens/buyer/CartScreen';
+import { OrderTrackingScreen } from '../screens/buyer/OrderTrackingScreen';
 import { BuyerReservationsScreen } from '../screens/buyer/BuyerReservationsScreen';
-import { NotificationsScreen } from '../screens/NotificationsScreen';
+import { AuthScreen } from '../screens/auth/AuthScreen';
 import { ProfileScreen } from '../screens/ProfileScreen';
 import { LoadingScreen } from '../screens/LoadingScreen';
+import { WelcomeScreen } from '../screens/WelcomeScreen';
 import { useAppState } from '../state/AppState';
 import { colors } from '../theme';
 import {
@@ -24,8 +26,8 @@ import {
   FisherTabsParamList,
 } from './types';
 
-const RootStack = createNativeStackNavigator();
-const BuyerStack = createNativeStackNavigator<BuyerStackParamList>();
+const RootStack = createStackNavigator();
+const BuyerStack = createStackNavigator<BuyerStackParamList>();
 const BuyerTabs = createBottomTabNavigator<BuyerTabsParamList>();
 const FisherTabs = createBottomTabNavigator<FisherTabsParamList>();
 
@@ -53,12 +55,21 @@ const BuyerStackNavigator = () => (
       component={ListingDetailScreen}
       options={{ title: 'Détail' }}
     />
+    <BuyerStack.Screen
+      name="OrderTracking"
+      component={OrderTrackingWrapper}
+      options={{ title: 'Suivi' }}
+    />
   </BuyerStack.Navigator>
 );
 
-const BuyerTabsNavigator = () => {
-  const { unreadCount } = useAppState();
+const OrderTrackingWrapper: React.FC<{
+  route: RouteProp<BuyerStackParamList, 'OrderTracking'>;
+}> = ({ route }) => {
+  return <OrderTrackingScreen reservationId={route.params.reservationId} />;
+};
 
+const BuyerTabsNavigator = () => {
   return (
     <BuyerTabs.Navigator
       screenOptions={({ route }) => ({
@@ -66,12 +77,10 @@ const BuyerTabsNavigator = () => {
           const icon =
             route.name === 'Feed'
               ? 'home'
-              : route.name === 'Favorites'
-              ? 'heart'
+              : route.name === 'Cart'
+              ? 'cart'
               : route.name === 'Reservations'
               ? 'calendar'
-              : route.name === 'Notifications'
-              ? 'notifications'
               : 'person';
           return <Ionicons name={icon} size={size} color={color} />;
         },
@@ -81,24 +90,20 @@ const BuyerTabsNavigator = () => {
         headerShown: false,
       })}
     >
-      <BuyerTabs.Screen name="Feed" component={BuyerStackNavigator} options={{ title: 'Pêches' }} />
       <BuyerTabs.Screen
-        name="Favorites"
-        component={FavoritesScreen}
-        options={{ title: 'Favoris' }}
+        name="Feed"
+        component={BuyerStackNavigator}
+        options={{ title: 'Pêches' }}
+      />
+      <BuyerTabs.Screen
+        name="Cart"
+        component={CartScreen}
+        options={{ title: 'Panier' }}
       />
       <BuyerTabs.Screen
         name="Reservations"
         component={BuyerReservationsScreen}
         options={{ title: 'Réservations' }}
-      />
-      <BuyerTabs.Screen
-        name="Notifications"
-        component={NotificationsScreen}
-        options={{
-          title: 'Alertes',
-          tabBarBadge: unreadCount > 0 ? unreadCount : undefined,
-        }}
       />
       <BuyerTabs.Screen
         name="Profile"
@@ -110,8 +115,6 @@ const BuyerTabsNavigator = () => {
 };
 
 const FisherTabsNavigator = () => {
-  const { unreadCount } = useAppState();
-
   return (
     <FisherTabs.Navigator
       screenOptions={({ route }) => ({
@@ -123,10 +126,6 @@ const FisherTabsNavigator = () => {
               ? 'add-circle'
               : route.name === 'Reservations'
               ? 'calendar'
-              : route.name === 'Favorites'
-              ? 'heart'
-              : route.name === 'Notifications'
-              ? 'notifications'
               : 'person';
           return <Ionicons name={icon} size={size} color={color} />;
         },
@@ -146,23 +145,10 @@ const FisherTabsNavigator = () => {
         component={CreateListingScreen}
         options={{ title: 'Publier' }}
       />
-    <FisherTabs.Screen
-      name="Reservations"
-      component={FisherReservationsScreen}
-      options={{ title: 'Réservations' }}
-    />
-    <FisherTabs.Screen
-      name="Favorites"
-      component={FisherFavoritesScreen}
-      options={{ title: 'Suivis' }}
-    />
       <FisherTabs.Screen
-        name="Notifications"
-        component={NotificationsScreen}
-        options={{
-          title: 'Alertes',
-          tabBarBadge: unreadCount > 0 ? unreadCount : undefined,
-        }}
+        name="Reservations"
+        component={FisherReservationsScreen}
+        options={{ title: 'Réservations' }}
       />
       <FisherTabs.Screen
         name="Profile"
@@ -174,7 +160,9 @@ const FisherTabsNavigator = () => {
 };
 
 export const RootNavigator: React.FC = () => {
-  const { role, fisherStatus, hydrated } = useAppState();
+  const { currentUser, role, fisherStatus, buyerStatus, hydrated } = useAppState();
+  const effectiveRole = currentUser?.role ?? role;
+  const [showWelcome, setShowWelcome] = useState(true);
 
   if (!hydrated) {
     return <LoadingScreen />;
@@ -183,11 +171,17 @@ export const RootNavigator: React.FC = () => {
   return (
     <NavigationContainer theme={navTheme}>
       <RootStack.Navigator screenOptions={{ headerShown: false }}>
-        {!role ? (
-          <RootStack.Screen name="RoleSelect" component={RoleSelectScreen} />
-        ) : role === 'fisher' && fisherStatus !== 'approved' ? (
+        {showWelcome ? (
+          <RootStack.Screen name="Welcome">
+            {() => <WelcomeScreen onContinue={() => setShowWelcome(false)} />}
+          </RootStack.Screen>
+        ) : !currentUser ? (
+          <RootStack.Screen name="Auth" component={AuthScreen} />
+        ) : effectiveRole === 'fisher' && fisherStatus !== 'approved' ? (
           <RootStack.Screen name="Onboarding" component={OnboardingScreen} />
-        ) : role === 'fisher' ? (
+        ) : effectiveRole === 'buyer' && buyerStatus !== 'approved' ? (
+          <RootStack.Screen name="BuyerOnboarding" component={BuyerOnboardingScreen} />
+        ) : effectiveRole === 'fisher' ? (
           <RootStack.Screen name="Fisher" component={FisherTabsNavigator} />
         ) : (
           <RootStack.Screen name="Buyer" component={BuyerTabsNavigator} />
