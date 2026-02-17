@@ -171,6 +171,7 @@ type AppState = {
   clearCart: () => void;
   checkoutCart: (pickupTime: string, note?: string) => void;
   updateDeliveryStatus: (id: string, status: Reservation['deliveryStatus']) => void;
+  updateReservationLocation: (id: string, lat: number, lng: number) => void;
   setBuyerConformity: (id: string, conformity: 'conform' | 'non_conform', note?: string) => void;
   releaseEscrow: (id: string) => void;
   resolveDispute: (id: string, resolution: 'refund_buyer' | 'pay_fisher' | 'split') => void;
@@ -447,6 +448,9 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({
         status: 'pending',
         deliveryStatus: 'at_sea',
         eta: listing.pickupWindow,
+        gpsLat: listing.latitude,
+        gpsLng: listing.longitude,
+        gpsUpdatedAt: listing.latitude && listing.longitude ? paidAt : undefined,
         buyerConformity: 'pending',
       },
       ...prev,
@@ -595,24 +599,31 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({
     const checkoutId = `ck-${Date.now()}`;
     const effectiveBuyerName = resolveBuyerName(buyerProfile);
     const createdAt = new Date().toISOString();
-    const newReservations: Reservation[] = cart.map((item, index) => ({
-      id: `r-${reservations.length + index + 1}`,
-      checkoutId,
-      listingId: item.listingId,
-      listingTitle: item.title,
-      buyerName: effectiveBuyerName,
-      qtyKg: item.qtyKg,
-      pickupTime,
-      note,
-      totalPrice: item.qtyKg * item.pricePerKg,
-      paymentStatus: 'paid',
-      escrowStatus: 'escrowed',
-      paidAt: createdAt,
-      status: 'pending',
-      deliveryStatus: 'at_sea',
-      eta: pickupTime,
-      buyerConformity: 'pending',
-    }));
+    const newReservations: Reservation[] = cart.map((item, index) => {
+      const listing = listings.find((l) => l.id === item.listingId);
+      return {
+        id: `r-${reservations.length + index + 1}`,
+        checkoutId,
+        listingId: item.listingId,
+        listingTitle: item.title,
+        buyerName: effectiveBuyerName,
+        qtyKg: item.qtyKg,
+        pickupTime,
+        note,
+        totalPrice: item.qtyKg * item.pricePerKg,
+        paymentStatus: 'paid',
+        escrowStatus: 'escrowed',
+        paidAt: createdAt,
+        status: 'pending',
+        deliveryStatus: 'at_sea',
+        eta: pickupTime,
+        gpsLat: listing?.latitude,
+        gpsLng: listing?.longitude,
+        gpsUpdatedAt:
+          listing?.latitude && listing?.longitude ? createdAt : undefined,
+        buyerConformity: 'pending',
+      };
+    });
     setReservations((prev) => [...newReservations, ...prev]);
     setCart([]);
     pushNotification(
@@ -632,6 +643,26 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({
       prev.map((reservation) =>
         reservation.id === id
           ? { ...reservation, deliveryStatus: status }
+          : reservation
+      )
+    );
+  };
+
+  const updateReservationLocation: AppState['updateReservationLocation'] = (
+    id,
+    lat,
+    lng
+  ) => {
+    const now = new Date().toISOString();
+    setReservations((prev) =>
+      prev.map((reservation) =>
+        reservation.id === id
+          ? {
+              ...reservation,
+              gpsLat: lat,
+              gpsLng: lng,
+              gpsUpdatedAt: now,
+            }
           : reservation
       )
     );
@@ -1286,6 +1317,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({
       clearCart,
       checkoutCart,
       updateDeliveryStatus,
+      updateReservationLocation,
       setBuyerConformity,
       releaseEscrow,
       resolveDispute,

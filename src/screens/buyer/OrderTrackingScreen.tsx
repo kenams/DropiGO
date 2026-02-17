@@ -30,6 +30,14 @@ export const OrderTrackingScreen: React.FC<Props> = ({ reservationId, onBack }) 
     () => listings.find((item) => item.id === reservation?.listingId),
     [listings, reservation]
   );
+  const mapLat = reservation?.gpsLat ?? listing?.latitude;
+  const mapLng = reservation?.gpsLng ?? listing?.longitude;
+  const gpsTime = reservation?.gpsUpdatedAt
+    ? new Date(reservation.gpsUpdatedAt).toLocaleTimeString('fr-FR', {
+        hour: '2-digit',
+        minute: '2-digit',
+      })
+    : null;
 
   if (!reservation) {
     return (
@@ -75,10 +83,16 @@ export const OrderTrackingScreen: React.FC<Props> = ({ reservationId, onBack }) 
         <Text style={styles.meta}>ETA : {reservation.eta ?? reservation.pickupTime}</Text>
         <Text style={styles.meta}>Statut : {deliveryLabel}</Text>
         <Text style={styles.meta}>Paiement : {escrowLabel}</Text>
+        {reservation.gpsLat !== undefined && reservation.gpsLng !== undefined && (
+          <Text style={styles.meta}>
+            Position : {reservation.gpsLat.toFixed(4)}, {reservation.gpsLng.toFixed(4)}
+            {gpsTime ? ` (maj ${gpsTime})` : ''}
+          </Text>
+        )}
       </Card>
 
-      {listing?.latitude !== undefined && listing?.longitude !== undefined && (
-        <MapPreview latitude={listing.latitude} longitude={listing.longitude} />
+      {mapLat !== undefined && mapLng !== undefined && (
+        <MapPreview latitude={mapLat} longitude={mapLng} />
       )}
 
       <Card style={styles.card}>

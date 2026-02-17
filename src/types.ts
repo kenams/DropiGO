@@ -71,6 +71,7 @@ export type Reservation = {
   eta?: string;
   gpsLat?: number;
   gpsLng?: number;
+  gpsUpdatedAt?: string;
   buyerConformity?: 'pending' | 'conform' | 'non_conform';
   disputeNote?: string;
   disputePhotos?: string[];

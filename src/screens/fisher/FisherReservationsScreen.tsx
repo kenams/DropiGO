@@ -16,12 +16,14 @@ type Props = { onBack?: () => void };
 const FisherReservationsContent: React.FC<Props> = ({ onBack }) => {
   const {
     reservations,
+    listings,
     updateReservationStatus,
     confirmBuyerArrival,
     declareFisherArrival,
     declareDelay,
     cancelAfterArrival,
     updateDeliveryStatus,
+    updateReservationLocation,
   } = useAppState();
 
   const ratePercent = Math.round(compensationPolicy.rate * 100);
@@ -35,6 +37,9 @@ const FisherReservationsContent: React.FC<Props> = ({ onBack }) => {
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.list}
         renderItem={({ item }) => {
+          const listing = listings.find((l) => l.id === item.listingId);
+          const hasListingCoords =
+            listing?.latitude !== undefined && listing?.longitude !== undefined;
           const statusLabel =
             item.status === 'pending'
               ? 'En attente'
@@ -91,6 +96,24 @@ const FisherReservationsContent: React.FC<Props> = ({ onBack }) => {
               : item.buyerConformity === 'non_conform'
               ? 'Non conforme'
               : 'En attente';
+          const lastGps = item.gpsUpdatedAt
+            ? new Date(item.gpsUpdatedAt).toLocaleTimeString('fr-FR', {
+                hour: '2-digit',
+                minute: '2-digit',
+              })
+            : null;
+
+          const handleGpsUpdate = () => {
+            if (!hasListingCoords || !listing) {
+              return;
+            }
+            const jitter = () => (Math.random() - 0.5) * 0.02;
+            updateReservationLocation(
+              item.id,
+              listing.latitude! + jitter(),
+              listing.longitude! + jitter()
+            );
+          };
 
           return (
             <Card style={styles.card}>
@@ -114,6 +137,12 @@ const FisherReservationsContent: React.FC<Props> = ({ onBack }) => {
               <ReservationTimeline status={item.status} />
               {item.deliveryStatus && (
                 <Text style={styles.note}>Suivi : {deliveryLabel}</Text>
+              )}
+              {item.gpsLat !== undefined && item.gpsLng !== undefined && (
+                <Text style={styles.note}>
+                  GPS : {item.gpsLat.toFixed(4)}, {item.gpsLng.toFixed(4)}
+                  {lastGps ? ` (maj ${lastGps})` : ''}
+                </Text>
               )}
               <Text style={styles.note}>Conformité : {conformityLabel}</Text>
               {item.compensation && (
@@ -177,7 +206,15 @@ const FisherReservationsContent: React.FC<Props> = ({ onBack }) => {
                           label="Arrivé"
                           onPress={() => updateDeliveryStatus(item.id, 'arrived')}
                         />
+                        {hasListingCoords && (
+                          <GhostButton label="MAJ GPS" onPress={handleGpsUpdate} />
+                        )}
                       </View>
+                      {!hasListingCoords && (
+                        <Text style={styles.note}>
+                          GPS indisponible (ajoutez une position à l’annonce).
+                        </Text>
+                      )}
                       <View style={styles.incidentActions}>
                         <GhostButton
                           label="Acheteur en retard"
