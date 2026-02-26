@@ -15,15 +15,24 @@ import { exportPickupReceipt } from '../../services/pdf';
 import { colors, spacing, textStyles } from '../../theme';
 import { BuyerStackParamList } from '../../navigation/types';
 
-type Props = { onBack?: () => void; onOpenTracking?: (id: string) => void };
+type Props = {
+  onBack?: () => void;
+  onOpenTracking?: (id: string) => void;
+  onOpenChat?: (threadId: string) => void;
+};
 
-const BuyerReservationsContent: React.FC<Props> = ({ onBack, onOpenTracking }) => {
+const BuyerReservationsContent: React.FC<Props> = ({
+  onBack,
+  onOpenTracking,
+  onOpenChat,
+}) => {
   const {
     reservations,
     listings,
     requestBuyerArrival,
     declareDelay,
     cancelAfterArrival,
+    startChat,
     role,
   } = useAppState();
   const canBuyer = role === 'buyer' || role === 'admin';
@@ -113,6 +122,8 @@ const BuyerReservationsContent: React.FC<Props> = ({ onBack, onOpenTracking }) =
               : item.buyerConformity === 'non_conform'
               ? 'Non conforme'
               : 'En attente';
+
+          const canChat = item.status === 'confirmed' || item.status === 'picked_up';
 
           return (
             <Card style={styles.card}>
@@ -206,6 +217,21 @@ const BuyerReservationsContent: React.FC<Props> = ({ onBack, onOpenTracking }) =
               )}
 
               <View style={styles.actions}>
+                {canBuyer && canChat && (
+                  <GhostButton
+                    label="Contacter le pêcheur"
+                    onPress={async () => {
+                      const threadId = await startChat(item.listingId, {
+                        buyerId: item.buyerId,
+                        buyerName: item.buyerName,
+                        listingTitle: item.listingTitle,
+                        fisherId: listings.find((l) => l.id === item.listingId)?.fisherId,
+                        fisherName: listings.find((l) => l.id === item.listingId)?.fisherName,
+                      });
+                      onOpenChat?.(threadId);
+                    }}
+                  />
+                )}
                 {onOpenTracking && canBuyer && (
                   <GhostButton
                     label="Suivre la commande"
@@ -234,6 +260,9 @@ export const BuyerReservationsScreen: React.FC = () => {
       onOpenTracking={(id) =>
         navigation.navigate('OrderTracking', { reservationId: id })
       }
+      onOpenChat={(threadId) =>
+        (navigation as any).navigate('ChatDetail', { threadId })
+      }
     />
   );
 };
@@ -241,9 +270,14 @@ export const BuyerReservationsScreen: React.FC = () => {
 export const BuyerReservationsStandalone: React.FC<Props> = ({
   onBack,
   onOpenTracking,
+  onOpenChat,
 }) => {
   return (
-    <BuyerReservationsContent onBack={onBack} onOpenTracking={onOpenTracking} />
+    <BuyerReservationsContent
+      onBack={onBack}
+      onOpenTracking={onOpenTracking}
+      onOpenChat={onOpenChat}
+    />
   );
 };
 

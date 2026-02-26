@@ -1,4 +1,11 @@
-﻿import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
+﻿import React, {
+  createContext,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   initialChatMessages,
@@ -19,8 +26,20 @@ import {
   configureNotifications,
   sendLocalNotification,
 } from '../services/notifications';
-import { isSupabaseConfigured } from '../services/supabase';
-import { upsertBuyerProfile, upsertFisherProfile } from '../services/supabaseKyc';
+import { supabase, isSupabaseConfigured } from '../services/supabase';
+import {
+  fetchBuyerProfile,
+  fetchFisherProfile,
+  upsertBuyerProfile,
+  upsertFisherProfile,
+} from '../services/supabaseKyc';
+import {
+  fetchAllProfiles,
+  resolveAuthUser,
+  toAuthUser,
+  updateProfileRole,
+  upsertProfile,
+} from '../services/supabaseProfiles';
 import {
   canUseRemoteVerification,
   verifyBuyerRemote,
@@ -135,6 +154,24 @@ const defaultBuyerProfile: BuyerProfile = {
 const normalizePortName = (value: string) =>
   value.trim().replace(/\s+/g, ' ');
 
+const mergeUniqueStrings = (values: string[]) => {
+  const seen = new Set<string>();
+  const result: string[] = [];
+  values.forEach((raw) => {
+    const normalized = normalizePortName(raw);
+    if (!normalized) {
+      return;
+    }
+    const key = normalized.toLowerCase();
+    if (seen.has(key)) {
+      return;
+    }
+    seen.add(key);
+    result.push(normalized);
+  });
+  return result;
+};
+
 const resolveBuyerName = (profile: BuyerProfile) => {
   if (profile.company.trim().length > 0) {
     return profile.company;
@@ -145,10 +182,109 @@ const resolveBuyerName = (profile: BuyerProfile) => {
   return buyerName;
 };
 
+const toNumber = (value: unknown, fallback = 0) => {
+  const num = Number(value);
+  return Number.isFinite(num) ? num : fallback;
+};
+
+const mapListingRow = (row: any): Listing => ({
+  id: row.id,
+  title: row.title ?? '',
+  variety: row.variety ?? '',
+  pricePerKg: toNumber(row.price_per_kg),
+  stockKg: toNumber(row.stock_kg),
+  location: row.location ?? '',
+  pickupWindow: row.pickup_window ?? '',
+  pickupSlots: row.pickup_slots ?? undefined,
+  catchDate: row.catch_date ?? 'Aujourd\'hui',
+  method: row.method ?? 'Non précisée',
+  sizeGrade: row.size_grade ?? 'Standard',
+  qualityTags: row.quality_tags ?? ['Frais'],
+  imageUri: row.image_url ?? undefined,
+  latitude: row.latitude !== null && row.latitude !== undefined ? toNumber(row.latitude) : undefined,
+  longitude: row.longitude !== null && row.longitude !== undefined ? toNumber(row.longitude) : undefined,
+  fisherPermit: row.fisher_permit ?? undefined,
+  fisherBoat: row.fisher_boat ?? undefined,
+  fisherRegistration: row.fisher_registration ?? undefined,
+  status: row.status ?? 'active',
+  fisherName: row.fisher_name ?? fisherName,
+  fisherId: row.fisher_id ?? undefined,
+  createdAt: row.created_at ?? new Date().toISOString(),
+});
+
+const mapReservationRow = (row: any): Reservation => ({
+  id: row.id,
+  checkoutId: row.checkout_id ?? undefined,
+  listingId: row.listing_id ?? '',
+  buyerId: row.buyer_id ?? undefined,
+  fisherId: row.fisher_id ?? undefined,
+  listingTitle: row.listing_title ?? '',
+  buyerName: row.buyer_name ?? '',
+  qtyKg: toNumber(row.qty_kg),
+  pickupTime: row.pickup_time ?? '',
+  note: row.note ?? undefined,
+  totalPrice: toNumber(row.total_price),
+  paymentStatus: row.payment_status ?? 'unpaid',
+  escrowStatus: row.escrow_status ?? 'unpaid',
+  paidAt: row.paid_at ?? undefined,
+  status: row.status ?? 'pending',
+  deliveryStatus: row.delivery_status ?? 'at_sea',
+  eta: row.eta ?? undefined,
+  gpsLat: row.gps_lat !== null && row.gps_lat !== undefined ? toNumber(row.gps_lat) : undefined,
+  gpsLng: row.gps_lng !== null && row.gps_lng !== undefined ? toNumber(row.gps_lng) : undefined,
+  gpsUpdatedAt: row.gps_updated_at ?? undefined,
+  buyerConformity: row.buyer_conformity ?? 'pending',
+  disputeNote: row.dispute_note ?? undefined,
+  disputePhotos: row.dispute_photos ?? undefined,
+  buyerArrivalRequestedAt: row.buyer_arrival_requested_at ?? undefined,
+  buyerArrivalConfirmedAt: row.buyer_arrival_confirmed_at ?? undefined,
+  fisherArrivalDeclaredAt: row.fisher_arrival_declared_at ?? undefined,
+  cancellationBy: row.cancellation_by ?? undefined,
+  cancellationAt: row.cancellation_at ?? undefined,
+  compensation: row.compensation ?? undefined,
+  disputeResolution: row.dispute_resolution ?? undefined,
+  disputeResolvedAt: row.dispute_resolved_at ?? undefined,
+});
+
+const mapChatMessageRow = (row: any): ChatMessage => ({
+  id: row.id,
+  threadId: row.thread_id ?? '',
+  sender: row.sender_role ?? 'buyer',
+  text: row.text ?? '',
+  createdAt: row.created_at ?? new Date().toISOString(),
+});
+
+const resolveThreadOtherName = (row: any, currentRole: Role | null) => {
+  if (currentRole === 'buyer') {
+    return row.fisher_name ?? 'Pêcheur';
+  }
+  if (currentRole === 'fisher') {
+    return row.buyer_name ?? 'Acheteur';
+  }
+  if (row.buyer_name && row.fisher_name) {
+    return `${row.buyer_name} · ${row.fisher_name}`;
+  }
+  return row.buyer_name ?? row.fisher_name ?? 'Conversation';
+};
+
+const mapChatThreadRow = (
+  row: any,
+  currentRole: Role | null,
+  unreadCount = 0
+): ChatThread => ({
+  id: row.id,
+  listingId: row.listing_id ?? '',
+  listingTitle: row.listing_title ?? 'Annonce',
+  otherName: resolveThreadOtherName(row, currentRole),
+  lastMessage: row.last_message ?? '',
+  updatedAt: row.updated_at ?? new Date().toISOString(),
+  unreadCount,
+});
+
 type AppState = {
   currentUser: AuthUser | null;
   users: AuthUser[];
-  signIn: (identifier: string, password: string) => { ok: boolean; message?: string };
+  signIn: (identifier: string, password: string) => Promise<{ ok: boolean; message?: string }>;
   signUp: (data: {
     name: string;
     email: string;
@@ -156,7 +292,7 @@ type AppState = {
     password: string;
     role: Role;
     company?: string;
-  }) => { ok: boolean; message?: string };
+  }) => Promise<{ ok: boolean; message?: string }>;
   signOut: () => void;
   role: Role | null;
   setRole: (role: Role | null) => void;
@@ -184,9 +320,21 @@ type AppState = {
   toggleFavorite: (listingId: string) => void;
   chatThreads: ChatThread[];
   chatMessages: ChatMessage[];
-  startChat: (listingId: string) => string;
-  sendChatMessage: (threadId: string, text: string) => void;
+  startChat: (
+    listingId: string,
+    context?: {
+      buyerId?: string;
+      buyerName?: string;
+      fisherId?: string;
+      fisherName?: string;
+      listingTitle?: string;
+    }
+  ) => Promise<string>;
+  sendChatMessage: (threadId: string, text: string) => Promise<void>;
   markThreadRead: (threadId: string) => void;
+  adminProfiles: AuthUser[];
+  refreshAdminProfiles: () => Promise<void>;
+  updateUserRole: (id: string, role: Role) => Promise<void>;
   fisherApplicants: FisherApplicant[];
   updateFisherApplicantStatus: (id: string, status: FisherApplicantStatus) => void;
   buyerApplicants: BuyerApplicant[];
@@ -195,8 +343,15 @@ type AppState = {
   queue: QueueItem[];
   syncHistory: SyncHistoryItem[];
   syncQueue: () => void;
-  addListing: (listing: Omit<Listing, 'id' | 'status' | 'fisherName' | 'createdAt'>) => void;
-  createReservation: (listingId: string, qtyKg: number, pickupTime: string, note?: string) => void;
+  addListing: (
+    listing: Omit<Listing, 'id' | 'status' | 'fisherName' | 'createdAt'>
+  ) => Promise<void>;
+  createReservation: (
+    listingId: string,
+    qtyKg: number,
+    pickupTime: string,
+    note?: string
+  ) => Promise<void>;
   updateReservationStatus: (id: string, status: ReservationStatus) => void;
   markReservationPaid: (id: string) => void;
   addToCart: (listingId: string, qtyKg: number) => void;
@@ -282,6 +437,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>(
     initialChatMessages
   );
+  const [adminProfiles, setAdminProfiles] = useState<AuthUser[]>([]);
   const [fisherApplicants, setFisherApplicants] = useState<FisherApplicant[]>(
     initialFisherApplicants
   );
@@ -293,12 +449,18 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({
   const [syncHistory, setSyncHistory] = useState<SyncHistoryItem[]>([]);
   const [isOnline, setIsOnline] = useState(true);
   const [hydrated, setHydrated] = useState(false);
+  const [authSource, setAuthSource] = useState<'local' | 'supabase' | null>(null);
+  const authSourceRef = useRef<'local' | 'supabase' | null>(null);
 
   const pushNotification = (title: string, body: string) => {
     const notification = createNotification(title, body);
     setNotifications((prev) => [notification, ...prev]);
     sendLocalNotification(title, body).catch(() => undefined);
   };
+
+  useEffect(() => {
+    authSourceRef.current = authSource;
+  }, [authSource]);
 
   const hasRole = (allowed: Role[], _allowAdmin = false) => {
     if (!role) {
@@ -327,11 +489,325 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({
     [users, currentUserId]
   );
 
-  const signIn: AppState['signIn'] = (identifier, password) => {
+  const upsertUserState = (user: AuthUser) => {
+    setUsers((prev) => {
+      const index = prev.findIndex((item) => item.id === user.id);
+      if (index >= 0) {
+        const next = [...prev];
+        next[index] = { ...next[index], ...user };
+        return next;
+      }
+      return [user, ...prev];
+    });
+    setCurrentUserId(user.id);
+    setRole(user.role);
+  };
+
+  const clearUserContext = () => {
+    setCurrentUserId(null);
+    setRole(null);
+    setBuyerStatus('draft');
+    setFisherStatus('draft');
+    setBuyerVerification(null);
+    setFisherVerification(null);
+    setBuyerProfile({ ...defaultBuyerProfile });
+    setFisherProfile({ ...defaultFisherProfile });
+    setAuthSource(null);
+  };
+
+  const applyUserContext = async (user: AuthUser) => {
+    const isDemo = user.email.endsWith('@dropipeche.demo');
+    upsertUserState(user);
+
+    if (user.role === 'buyer') {
+      let nextProfile: BuyerProfile = {
+        ...defaultBuyerProfile,
+        name: user.name,
+        company: user.company || user.name,
+        email: user.email,
+        phone: user.phone || '',
+      };
+      let remoteStatus: BuyerStatus | null = null;
+      if (isSupabaseConfigured()) {
+        const { profile, status } = await fetchBuyerProfile(user.id);
+        if (profile) {
+          nextProfile = {
+            ...nextProfile,
+            ...profile,
+            name: user.name,
+            company: user.company || user.name,
+            email: user.email,
+            phone: user.phone || '',
+          };
+        }
+        if (status === 'draft' || status === 'pending' || status === 'verified' || status === 'rejected') {
+          remoteStatus = status;
+        }
+      }
+
+      if (isDemo && !remoteStatus) {
+        nextProfile = {
+          ...nextProfile,
+          registry: '55210055400013',
+          activity: 'Restaurant',
+          paymentMethod: 'Carte professionnelle',
+          idNumber: 'ID-FR-932193',
+          address: 'Quai des Pêcheurs, Sète',
+        };
+      }
+
+      setBuyerProfile(nextProfile);
+      const report = isDemo
+        ? finalizeBuyerVerification(nextProfile, true)
+        : startBuyerVerification();
+      setBuyerVerification(report);
+      setBuyerStatus(remoteStatus ?? (isDemo ? report.status : 'draft'));
+      setFisherStatus('draft');
+      setFisherVerification(null);
+      setFisherProfile({ ...defaultFisherProfile });
+      return;
+    }
+
+    if (user.role === 'fisher') {
+      let nextProfile: FisherProfile = {
+        ...defaultFisherProfile,
+        name: user.name,
+        email: user.email,
+        phone: user.phone || '',
+      };
+      let remoteStatus: FisherStatus | null = null;
+      if (isSupabaseConfigured()) {
+        const { profile, status } = await fetchFisherProfile(user.id);
+        if (profile) {
+          nextProfile = {
+            ...nextProfile,
+            ...profile,
+            name: user.name,
+            email: user.email,
+            phone: user.phone || '',
+          };
+        }
+        if (status === 'draft' || status === 'pending' || status === 'verified' || status === 'rejected') {
+          remoteStatus = status;
+        }
+      }
+
+      if (isDemo && !remoteStatus) {
+        nextProfile = {
+          ...nextProfile,
+          permit: 'FR-PECH-9821',
+          boat: 'L’Étoile Marine',
+          registration: 'SE-4592',
+          port: 'Port de Sète',
+          insurance: 'Assurance Maritime AXA',
+          bankAccount: 'FR76 3000 6000 0112 3456 7890 189',
+          idNumber: 'ID-FR-125971',
+        };
+      }
+
+      setFisherProfile(nextProfile);
+      const report = isDemo
+        ? finalizeFisherVerification(nextProfile, true)
+        : startFisherVerification();
+      setFisherVerification(report);
+      setFisherStatus(remoteStatus ?? (isDemo ? report.status : 'draft'));
+      setBuyerStatus('draft');
+      setBuyerVerification(null);
+      setBuyerProfile({ ...defaultBuyerProfile });
+      return;
+    }
+
+    setBuyerStatus('draft');
+    setFisherStatus('draft');
+    setBuyerVerification(null);
+    setFisherVerification(null);
+    setBuyerProfile({ ...defaultBuyerProfile });
+    setFisherProfile({ ...defaultFisherProfile });
+  };
+
+  const loadRemoteData = async (user: AuthUser) => {
+    const client = supabase;
+    if (!isSupabaseConfigured() || !client || authSourceRef.current !== 'supabase') {
+      return;
+    }
+
+    const roleForData = user.role;
+    try {
+      const portsPromise = client
+        .from('ports')
+        .select('name')
+        .order('created_at', { ascending: false });
+
+      const listingsQuery = client
+        .from('listings')
+        .select('*')
+        .order('created_at', { ascending: false });
+      if (roleForData === 'fisher' && user.id) {
+        listingsQuery.eq('fisher_id', user.id);
+      }
+
+      const reservationsQuery = client
+        .from('reservations')
+        .select('*')
+        .order('created_at', { ascending: false });
+      if (roleForData === 'buyer') {
+        reservationsQuery.eq('buyer_id', user.id);
+      } else if (roleForData === 'fisher') {
+        reservationsQuery.eq('fisher_id', user.id);
+      }
+
+      const favoritesPromise = client
+        .from('favorites')
+        .select('listing_id')
+        .eq('user_id', user.id);
+
+      const threadsQuery = client
+        .from('chat_threads')
+        .select('*')
+        .order('updated_at', { ascending: false });
+      if (roleForData !== 'admin') {
+        threadsQuery.or(`buyer_id.eq.${user.id},fisher_id.eq.${user.id}`);
+      }
+
+      const [
+        portsResult,
+        listingsResult,
+        reservationsResult,
+        favoritesResult,
+        threadsResult,
+      ] = await Promise.all([
+        portsPromise,
+        listingsQuery,
+        reservationsQuery,
+        favoritesPromise,
+        threadsQuery,
+      ]);
+
+      if (!portsResult.error && portsResult.data) {
+        const remotePorts = portsResult.data
+          .map((row: any) => row.name)
+          .filter(Boolean);
+        if (remotePorts.length > 0) {
+          setKnownPortsState((prev) =>
+            mergeUniqueStrings([...remotePorts, ...prev, ...knownPorts])
+          );
+        }
+      }
+
+      if (!listingsResult.error && listingsResult.data) {
+        setListings(listingsResult.data.map(mapListingRow));
+      }
+
+      if (!reservationsResult.error && reservationsResult.data) {
+        setReservations(reservationsResult.data.map(mapReservationRow));
+      }
+
+      if (!favoritesResult.error && favoritesResult.data) {
+        setFavorites(
+          favoritesResult.data
+            .map((row: any) => row.listing_id)
+            .filter(Boolean)
+        );
+      }
+
+      if (!threadsResult.error && threadsResult.data) {
+        const threads = threadsResult.data as any[];
+        const threadIds = threads.map((row) => row.id).filter(Boolean);
+        let messages: any[] = [];
+        if (threadIds.length > 0) {
+          const { data: messageRows } = await client
+            .from('chat_messages')
+            .select('*')
+            .in('thread_id', threadIds)
+            .order('created_at', { ascending: true });
+          messages = messageRows ?? [];
+        }
+
+        const mappedMessages = messages.map(mapChatMessageRow);
+        setChatMessages(mappedMessages);
+
+        const unreadByThread = new Map<string, number>();
+        if (roleForData === 'buyer' || roleForData === 'fisher') {
+          messages.forEach((row) => {
+            const senderRole = row.sender_role;
+            if (senderRole === roleForData) {
+              return;
+            }
+            const isRead =
+              roleForData === 'buyer' ? row.read_by_buyer : row.read_by_fisher;
+            if (isRead) {
+              return;
+            }
+            const count = unreadByThread.get(row.thread_id) ?? 0;
+            unreadByThread.set(row.thread_id, count + 1);
+          });
+        }
+
+        setChatThreads(
+          threads.map((row) =>
+            mapChatThreadRow(row, roleForData, unreadByThread.get(row.id) ?? 0)
+          )
+        );
+      }
+    } catch {
+      // Ignore remote sync errors for now.
+    }
+  };
+
+  const refreshAdminProfiles: AppState['refreshAdminProfiles'] = async () => {
+    if (role !== 'admin') {
+      setAdminProfiles([]);
+      return;
+    }
+    const client = supabase;
+    if (!isSupabaseConfigured() || !client || authSource !== 'supabase') {
+      setAdminProfiles(users);
+      return;
+    }
+    const rows = await fetchAllProfiles();
+    setAdminProfiles(rows.map(toAuthUser));
+  };
+
+  const updateUserRole: AppState['updateUserRole'] = async (id, nextRole) => {
+    if (!requireRole(['admin'], 'Action réservée aux administrateurs.')) {
+      return;
+    }
+    const client = supabase;
+    if (isSupabaseConfigured() && client && authSource === 'supabase') {
+      await updateProfileRole(id, nextRole);
+      setAdminProfiles((prev) =>
+        prev.map((profile) =>
+          profile.id === id ? { ...profile, role: nextRole } : profile
+        )
+      );
+    }
+
+    setUsers((prev) =>
+      prev.map((user) => (user.id === id ? { ...user, role: nextRole } : user))
+    );
+  };
+
+  const signIn: AppState['signIn'] = async (identifier, password) => {
     const normalized = identifier.trim().toLowerCase();
     if (!normalized || !password) {
       return { ok: false, message: 'Renseignez vos identifiants.' };
     }
+
+    const client = supabase;
+    if (isSupabaseConfigured() && client && normalized.includes('@') && !normalized.endsWith('@dropipeche.demo')) {
+      const { data, error } = await client.auth.signInWithPassword({
+        email: normalized,
+        password,
+      });
+      if (error || !data.user) {
+        return { ok: false, message: error?.message ?? 'Connexion impossible.' };
+      }
+      const authUser = await resolveAuthUser(data.user);
+      await applyUserContext({ ...authUser, password: '' });
+      setAuthSource('supabase');
+      return { ok: true };
+    }
+
     const user = users.find(
       (item) =>
         item.email.toLowerCase() === normalized ||
@@ -343,73 +819,52 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({
     if (user.password !== password) {
       return { ok: false, message: 'Mot de passe incorrect.' };
     }
-
-    const isDemo = user.email.endsWith('@dropipeche.demo');
-    setCurrentUserId(user.id);
-    setRole(user.role);
-
-    if (user.role === 'buyer') {
-      const nextProfile: BuyerProfile = {
-        ...defaultBuyerProfile,
-        name: user.name,
-        company: user.company || user.name,
-        email: user.email,
-        phone: user.phone || '',
-        registry: isDemo ? '55210055400013' : defaultBuyerProfile.registry,
-        activity: isDemo ? 'Restaurant' : defaultBuyerProfile.activity,
-        paymentMethod: isDemo ? 'Carte professionnelle' : defaultBuyerProfile.paymentMethod,
-        idNumber: isDemo ? 'ID-FR-932193' : defaultBuyerProfile.idNumber,
-        address: isDemo ? 'Quai des Pêcheurs, Sète' : defaultBuyerProfile.address,
-      };
-      setBuyerProfile(nextProfile);
-      const report = isDemo
-        ? finalizeBuyerVerification(nextProfile, true)
-        : startBuyerVerification();
-      setBuyerVerification(report);
-      setBuyerStatus(isDemo ? report.status : 'draft');
-      setFisherStatus('draft');
-      setFisherVerification(null);
-      setFisherProfile({ ...defaultFisherProfile });
-    } else if (user.role === 'fisher') {
-      const nextProfile: FisherProfile = {
-        ...defaultFisherProfile,
-        name: user.name,
-        email: user.email,
-        phone: user.phone || '',
-        permit: isDemo ? 'FR-PECH-9821' : defaultFisherProfile.permit,
-        boat: isDemo ? 'L’Étoile Marine' : defaultFisherProfile.boat,
-        registration: isDemo ? 'SE-4592' : defaultFisherProfile.registration,
-        port: isDemo ? 'Port de Sète' : defaultFisherProfile.port,
-        insurance: isDemo ? 'Assurance Maritime AXA' : defaultFisherProfile.insurance,
-        bankAccount: isDemo ? 'FR76 3000 6000 0112 3456 7890 189' : defaultFisherProfile.bankAccount,
-        idNumber: isDemo ? 'ID-FR-125971' : defaultFisherProfile.idNumber,
-      };
-      setFisherProfile(nextProfile);
-      const report = isDemo
-        ? finalizeFisherVerification(nextProfile, true)
-        : startFisherVerification();
-      setFisherVerification(report);
-      setFisherStatus(isDemo ? report.status : 'draft');
-      setBuyerStatus('draft');
-      setBuyerVerification(null);
-      setBuyerProfile({ ...defaultBuyerProfile });
-    } else {
-      setBuyerStatus('draft');
-      setFisherStatus('draft');
-      setBuyerVerification(null);
-      setFisherVerification(null);
-      setBuyerProfile({ ...defaultBuyerProfile });
-      setFisherProfile({ ...defaultFisherProfile });
-    }
+    await applyUserContext(user);
+    setAuthSource('local');
     return { ok: true };
   };
 
-  const signUp: AppState['signUp'] = (data) => {
+  const signUp: AppState['signUp'] = async (data) => {
     const email = data.email.trim().toLowerCase();
     const phone = data.phone?.trim();
     if (!data.name.trim() || !email || !data.password) {
       return { ok: false, message: 'Nom, email et mot de passe requis.' };
     }
+
+    const client = supabase;
+    if (isSupabaseConfigured() && client) {
+      const { data: authData, error } = await client.auth.signUp({
+        email,
+        password: data.password,
+        options: {
+          data: {
+            role: data.role,
+            name: data.name.trim(),
+            company: data.company?.trim(),
+            phone: phone,
+          },
+        },
+      });
+      if (error) {
+        return { ok: false, message: error.message };
+      }
+      if (authData.user) {
+        await upsertProfile(authData.user, {
+          role: data.role,
+          name: data.name.trim(),
+          company: data.company?.trim() ?? null,
+          phone: phone ?? null,
+          email,
+        });
+        if (authData.session?.user) {
+          const authUser = await resolveAuthUser(authData.user);
+          await applyUserContext({ ...authUser, password: '' });
+          setAuthSource('supabase');
+        }
+      }
+      return { ok: true };
+    }
+
     if (users.some((item) => item.email.toLowerCase() === email)) {
       return { ok: false, message: 'Cet email est déjà utilisé.' };
     }
@@ -427,43 +882,28 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({
       createdAt: new Date().toISOString(),
     };
     setUsers((prev) => [newUser, ...prev]);
-    setCurrentUserId(newUser.id);
-    setRole(newUser.role);
-    setBuyerStatus('draft');
-    setFisherStatus('draft');
-    setBuyerVerification(null);
-    setFisherVerification(null);
-    if (newUser.role === 'buyer') {
-      setBuyerProfile({
-        ...defaultBuyerProfile,
-        name: newUser.name,
-        company: newUser.company || newUser.name,
-        email: newUser.email,
-        phone: newUser.phone || '',
-      });
-      setBuyerVerification(startBuyerVerification());
-    } else if (newUser.role === 'fisher') {
-      setFisherProfile({
-        ...defaultFisherProfile,
-        name: newUser.name,
-        email: newUser.email,
-        phone: newUser.phone || '',
-      });
-      setFisherVerification(startFisherVerification());
-    }
+    await applyUserContext(newUser);
+    setAuthSource('local');
     return { ok: true };
   };
 
   const signOut: AppState['signOut'] = () => {
-    setCurrentUserId(null);
-    setRole(null);
-    setBuyerStatus('draft');
-    setFisherStatus('draft');
-    setBuyerVerification(null);
-    setFisherVerification(null);
-    setBuyerProfile({ ...defaultBuyerProfile });
-    setFisherProfile({ ...defaultFisherProfile });
+    const client = supabase;
+    if (isSupabaseConfigured() && client) {
+      client.auth.signOut().catch(() => undefined);
+    }
+    clearUserContext();
   };
+
+  useEffect(() => {
+    if (!currentUser || authSource !== 'supabase') {
+      return;
+    }
+    loadRemoteData(currentUser);
+    if (currentUser.role === 'admin') {
+      refreshAdminProfiles().catch(() => undefined);
+    }
+  }, [authSource, currentUser?.id, currentUser?.role]);
 
   const recordVerification = (report: VerificationReport, subject: string) => {
     const history: VerificationHistoryItem = {
@@ -629,6 +1069,20 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({
       }
       return [normalized, ...prev];
     });
+
+    const client = supabase;
+    if (isSupabaseConfigured() && client && authSource === 'supabase' && currentUser) {
+      void client
+        .from('ports')
+        .upsert(
+          {
+            name: normalized,
+            created_by: currentUser.id,
+          },
+          { onConflict: 'name' }
+        )
+        .then(() => undefined);
+    }
   };
 
   const enqueueAction = (type: QueueItem['type'], summary: string) => {
@@ -648,7 +1102,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({
     );
   };
 
-  const addListing: AppState['addListing'] = (listing) => {
+  const addListing: AppState['addListing'] = async (listing) => {
     if (!requireRole(['fisher'], 'Action réservée aux pêcheurs.')) {
       return;
     }
@@ -662,26 +1116,64 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({
       fisherRegistration: listing.fisherRegistration ?? fisherProfile.registration,
     };
     registerPort(listing.location);
-    setListings((prev) => [
-      {
-        id: `l-${prev.length + 1}`,
+    const client = supabase;
+    if (isSupabaseConfigured() && client && authSource === 'supabase' && currentUser) {
+      const payload = {
+        fisher_id: currentUser.id,
+        fisher_name: effectiveFisherName,
+        title: listing.title,
+        variety: listing.variety,
+        price_per_kg: listing.pricePerKg,
+        stock_kg: listing.stockKg,
+        location: listing.location,
+        latitude: listing.latitude ?? null,
+        longitude: listing.longitude ?? null,
+        pickup_window: listing.pickupWindow,
+        pickup_slots: listing.pickupSlots ?? null,
+        catch_date: listing.catchDate,
+        method: listing.method,
+        size_grade: listing.sizeGrade,
+        quality_tags: listing.qualityTags,
+        image_url: listing.imageUri ?? null,
+        fisher_permit: enrichedListing.fisherPermit ?? null,
+        fisher_boat: enrichedListing.fisherBoat ?? null,
+        fisher_registration: enrichedListing.fisherRegistration ?? null,
         status: 'active',
-        fisherName: effectiveFisherName,
-        createdAt,
-        ...enrichedListing,
-      },
-      ...prev,
-    ]);
+        created_at: createdAt,
+      };
+      const { data, error } = await client
+        .from('listings')
+        .insert(payload)
+        .select('*')
+        .single();
+      if (error || !data) {
+        pushNotification('Erreur', 'Impossible de publier l’annonce.');
+        return;
+      }
+      setListings((prev) => [mapListingRow(data), ...prev]);
+    } else {
+      setListings((prev) => [
+        {
+          id: `l-${prev.length + 1}`,
+          status: 'active',
+          fisherName: effectiveFisherName,
+          createdAt,
+          ...enrichedListing,
+        },
+        ...prev,
+      ]);
+      if (!isOnline) {
+        enqueueAction('add_listing', `Annonce : ${listing.title}`);
+      }
+    }
+
     pushNotification(
       'Nouvelle pêche disponible',
       `${effectiveFisherName} propose ${listing.variety} à ${listing.pricePerKg} € / kg.`
     );
-    if (!isOnline) {
-      enqueueAction('add_listing', `Annonce : ${listing.title}`);
-    }
   };
 
-  const createReservation: AppState['createReservation'] = (
+  const createReservation: AppState['createReservation'] = async (
     listingId,
     qtyKg,
     pickupTime,
@@ -698,37 +1190,93 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({
     const totalPrice = qtyKg * listing.pricePerKg;
     const checkoutId = `ck-${Date.now()}`;
     const paidAt = new Date().toISOString();
-    setReservations((prev) => [
-      {
-        id: `r-${prev.length + 1}`,
-        checkoutId,
-        listingId,
-        listingTitle: listing.title,
-        buyerName: effectiveBuyerName,
-        qtyKg,
-        pickupTime,
-        note,
-        totalPrice,
-        paymentStatus: 'paid',
-        escrowStatus: 'escrowed',
-        paidAt,
+    const client = supabase;
+    if (isSupabaseConfigured() && client && authSource === 'supabase' && currentUser) {
+      const payload = {
+        listing_id: listingId,
+        buyer_id: currentUser.id,
+        fisher_id: listing.fisherId ?? null,
+        listing_title: listing.title,
+        buyer_name: effectiveBuyerName,
+        qty_kg: qtyKg,
+        total_price: totalPrice,
+        pickup_time: pickupTime,
+        note: note ?? null,
+        checkout_id: checkoutId,
+        payment_status: 'paid',
+        escrow_status: 'escrowed',
         status: 'pending',
-        deliveryStatus: 'at_sea',
-        eta: listing.pickupWindow,
-        gpsLat: listing.latitude,
-        gpsLng: listing.longitude,
-        gpsUpdatedAt: listing.latitude && listing.longitude ? paidAt : undefined,
-        buyerConformity: 'pending',
-      },
-      ...prev,
-    ]);
+        delivery_status: 'at_sea',
+        buyer_conformity: 'pending',
+        gps_lat: listing.latitude ?? null,
+        gps_lng: listing.longitude ?? null,
+        gps_updated_at: listing.latitude && listing.longitude ? paidAt : null,
+        created_at: paidAt,
+      };
+      const { data, error } = await client
+        .from('reservations')
+        .insert(payload)
+        .select('*')
+        .single();
+      if (error || !data) {
+        pushNotification('Erreur', 'Impossible de créer la réservation.');
+        return;
+      }
+      setReservations((prev) => [mapReservationRow(data), ...prev]);
+    } else {
+      setReservations((prev) => [
+        {
+          id: `r-${prev.length + 1}`,
+          checkoutId,
+          listingId,
+          buyerId: currentUser?.id,
+          fisherId: listing.fisherId,
+          listingTitle: listing.title,
+          buyerName: effectiveBuyerName,
+          qtyKg,
+          pickupTime,
+          note,
+          totalPrice,
+          paymentStatus: 'paid',
+          escrowStatus: 'escrowed',
+          paidAt,
+          status: 'pending',
+          deliveryStatus: 'at_sea',
+          eta: listing.pickupWindow,
+          gpsLat: listing.latitude,
+          gpsLng: listing.longitude,
+          gpsUpdatedAt: listing.latitude && listing.longitude ? paidAt : undefined,
+          buyerConformity: 'pending',
+        },
+        ...prev,
+      ]);
+      if (!isOnline) {
+        enqueueAction('create_reservation', `Réservation : ${listing.title}`);
+      }
+    }
+
     pushNotification(
       'Nouvelle réservation',
       `${effectiveBuyerName} a réservé ${qtyKg} kg sur ${listing.title}.`
     );
-    if (!isOnline) {
-      enqueueAction('create_reservation', `Réservation : ${listing.title}`);
+  };
+
+  const updateReservationRemote = (id: string, payload: Record<string, any>) => {
+    const client = supabase;
+    if (!isSupabaseConfigured() || !client || authSource !== 'supabase') {
+      return;
     }
+    const cleaned = Object.fromEntries(
+      Object.entries(payload).filter(([, value]) => value !== undefined)
+    );
+    if (Object.keys(cleaned).length === 0) {
+      return;
+    }
+    void client
+      .from('reservations')
+      .update(cleaned)
+      .eq('id', id)
+      .then(() => undefined);
   };
 
   const updateReservationStatus: AppState['updateReservationStatus'] = (
@@ -738,21 +1286,26 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({
     if (!requireRole(['fisher'], 'Action réservée aux pêcheurs.', true)) {
       return;
     }
+    const now = new Date().toISOString();
     setReservations((prev) =>
       prev.map((reservation) => {
         if (reservation.id !== id) {
           return reservation;
         }
         if (status === 'picked_up') {
-          return {
+          const updated = {
             ...reservation,
             status,
-            deliveryStatus: 'delivered',
+            deliveryStatus: 'delivered' as Reservation['deliveryStatus'],
           };
+          updateReservationRemote(id, {
+            status,
+            delivery_status: 'delivered',
+          });
+          return updated;
         }
         if (status === 'rejected') {
-          const now = new Date().toISOString();
-          return {
+          const updated = {
             ...reservation,
             status,
             cancellationBy: reservation.cancellationBy ?? 'fisher',
@@ -762,7 +1315,15 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({
                 ? 'refunded'
                 : reservation.escrowStatus,
           };
+          updateReservationRemote(id, {
+            status,
+            cancellation_by: updated.cancellationBy ?? 'fisher',
+            cancellation_at: updated.cancellationAt ?? now,
+            escrow_status: updated.escrowStatus ?? null,
+          });
+          return updated;
         }
+        updateReservationRemote(id, { status });
         return { ...reservation, status };
       })
     );
@@ -793,17 +1354,19 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({
     if (!requireRole(['buyer'], 'Action réservée aux acheteurs.', true)) {
       return;
     }
+    const paidAt = new Date().toISOString();
     setReservations((prev) =>
       prev.map((reservation) =>
         reservation.id === id
           ? {
               ...reservation,
               paymentStatus: 'paid',
-              paidAt: new Date().toISOString(),
+              paidAt,
             }
           : reservation
       )
     );
+    updateReservationRemote(id, { payment_status: 'paid', paid_at: paidAt });
   };
 
   const addToCart: AppState['addToCart'] = (listingId, qtyKg) => {
@@ -937,6 +1500,9 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({
           : reservation
       )
     );
+    if (status) {
+      updateReservationRemote(id, { delivery_status: status });
+    }
   };
 
   const updateReservationLocation: AppState['updateReservationLocation'] = (
@@ -960,6 +1526,11 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({
           : reservation
       )
     );
+    updateReservationRemote(id, {
+      gps_lat: lat,
+      gps_lng: lng,
+      gps_updated_at: now,
+    });
   };
 
   const setBuyerConformity: AppState['setBuyerConformity'] = (
@@ -983,6 +1554,11 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({
         };
       })
     );
+    updateReservationRemote(id, {
+      buyer_conformity: conformity,
+      escrow_status: conformity === 'non_conform' ? 'hold' : undefined,
+      dispute_note: conformity === 'non_conform' ? note ?? null : undefined,
+    });
     if (conformity === 'non_conform') {
       pushNotification(
         'Litige ouvert',
@@ -995,6 +1571,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({
     if (!requireRole(['buyer'], 'Action réservée aux acheteurs.', true)) {
       return;
     }
+    const paidAt = new Date().toISOString();
     let released = false;
     setReservations((prev) =>
       prev.map((reservation) =>
@@ -1007,13 +1584,20 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({
                   ...reservation,
                   escrowStatus: 'released',
                   paymentStatus: 'paid',
-                  paidAt: reservation.paidAt ?? new Date().toISOString(),
+                  paidAt: reservation.paidAt ?? paidAt,
                 };
               })()
             : reservation
           : reservation
       )
     );
+    if (released) {
+      updateReservationRemote(id, {
+        escrow_status: 'released',
+        payment_status: 'paid',
+        paid_at: paidAt,
+      });
+    }
     if (released) {
       pushNotification(
         'Paiement débloqué',
@@ -1027,6 +1611,10 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({
       return;
     }
     const now = new Date().toISOString();
+    let payload: Record<string, any> = {
+      dispute_resolution: resolution,
+      dispute_resolved_at: now,
+    };
     setReservations((prev) =>
       prev.map((reservation) => {
         if (reservation.id !== id) {
@@ -1036,6 +1624,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({
           return reservation;
         }
         if (resolution === 'refund_buyer') {
+          payload = { ...payload, escrow_status: 'refunded' };
           return {
             ...reservation,
             escrowStatus: 'refunded',
@@ -1044,6 +1633,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({
           };
         }
         if (resolution === 'split') {
+          payload = { ...payload, escrow_status: 'released' };
           return {
             ...reservation,
             escrowStatus: 'released',
@@ -1051,6 +1641,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({
             disputeResolvedAt: now,
           };
         }
+        payload = { ...payload, escrow_status: 'released', status: 'picked_up' };
         return {
           ...reservation,
           escrowStatus: 'released',
@@ -1060,6 +1651,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({
         };
       })
     );
+    updateReservationRemote(id, payload);
     pushNotification(
       'Litige traité',
       resolution === 'refund_buyer'
@@ -1089,6 +1681,9 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({
       })
     );
     if (updated) {
+      updateReservationRemote(id, { buyer_arrival_requested_at: now });
+    }
+    if (updated) {
       pushNotification(
         'Arrivée signalée',
         'Le pêcheur doit confirmer votre arrivée au point de rendez-vous.'
@@ -1102,6 +1697,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({
     }
     const now = new Date().toISOString();
     let updated = false;
+    let requestedAt = now;
     setReservations((prev) =>
       prev.map((reservation) => {
         if (reservation.id !== id) {
@@ -1111,13 +1707,20 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({
           return reservation;
         }
         updated = true;
+        requestedAt = reservation.buyerArrivalRequestedAt ?? now;
         return {
           ...reservation,
-          buyerArrivalRequestedAt: reservation.buyerArrivalRequestedAt ?? now,
+          buyerArrivalRequestedAt: requestedAt,
           buyerArrivalConfirmedAt: now,
         };
       })
     );
+    if (updated) {
+      updateReservationRemote(id, {
+        buyer_arrival_requested_at: requestedAt,
+        buyer_arrival_confirmed_at: now,
+      });
+    }
     if (updated) {
       pushNotification(
         'Arrivée confirmée',
@@ -1144,6 +1747,9 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({
         return { ...reservation, fisherArrivalDeclaredAt: now };
       })
     );
+    if (updated) {
+      updateReservationRemote(id, { fisher_arrival_declared_at: now });
+    }
     if (updated) {
       pushNotification(
         'Présence confirmée',
@@ -1201,6 +1807,17 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({
           : reservation
       )
     );
+    updateReservationRemote(id, {
+      compensation,
+      escrow_status: escrowStatus,
+      ...(reason === 'cancelled_after_arrival'
+        ? {
+            status: 'rejected',
+            cancellation_by: triggeredBy,
+            cancellation_at: now,
+          }
+        : null),
+    });
     pushNotification(
       'Compensation déplacement',
       `Une compensation de ${compensation.amount.toFixed(2)} € a été attribuée au ${
@@ -1236,33 +1853,103 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({
   };
 
   const toggleFavorite = (listingId: string) => {
+    const isFavorite = favorites.includes(listingId);
     setFavorites((prev) =>
-      prev.includes(listingId)
-        ? prev.filter((id) => id !== listingId)
-        : [listingId, ...prev]
+      isFavorite ? prev.filter((id) => id !== listingId) : [listingId, ...prev]
     );
+
+    const client = supabase;
+    if (isSupabaseConfigured() && client && authSource === 'supabase' && currentUser) {
+      if (isFavorite) {
+        void client
+          .from('favorites')
+          .delete()
+          .eq('user_id', currentUser.id)
+          .eq('listing_id', listingId)
+          .then(() => undefined);
+      } else {
+        void client
+          .from('favorites')
+          .insert({ user_id: currentUser.id, listing_id: listingId })
+          .then(() => undefined);
+      }
+    }
   };
 
-  const startChat: AppState['startChat'] = (listingId) => {
+  const startChat: AppState['startChat'] = async (listingId, context) => {
     const existing = chatThreads.find((thread) => thread.listingId === listingId);
     if (existing) {
       return existing.id;
     }
     const listing = listings.find((item) => item.id === listingId);
+    const now = new Date().toISOString();
+
+    const client = supabase;
+    if (
+      isSupabaseConfigured() &&
+      client &&
+      authSource === 'supabase' &&
+      currentUser &&
+      role &&
+      role !== 'admin'
+    ) {
+      const buyerId = context?.buyerId ?? (role === 'buyer' ? currentUser.id : null);
+      const fisherId =
+        context?.fisherId ??
+        (role === 'fisher' ? currentUser.id : listing?.fisherId ?? null);
+      const buyerName =
+        context?.buyerName ??
+        (role === 'buyer' ? resolveBuyerName(buyerProfile) : 'Acheteur');
+      const fisherNameResolved =
+        context?.fisherName ??
+        (role === 'fisher'
+          ? fisherProfile.name || fisherName
+          : listing?.fisherName ?? 'Pêcheur');
+      const listingTitle = context?.listingTitle ?? listing?.title ?? 'Annonce';
+      if (buyerId && fisherId) {
+        const payload = {
+          listing_id: listingId,
+          buyer_id: buyerId,
+          fisher_id: fisherId,
+          listing_title: listingTitle,
+          buyer_name: buyerName,
+          fisher_name: fisherNameResolved,
+          last_message: 'Conversation démarrée',
+          updated_at: now,
+        };
+        const { data, error } = await client
+          .from('chat_threads')
+          .insert(payload)
+          .select('*')
+          .single();
+        if (!error && data) {
+          const newThread = mapChatThreadRow(data, role, 0);
+          setChatThreads((prev) => [newThread, ...prev]);
+          return data.id as string;
+        }
+      }
+    }
+
     const newThread: ChatThread = {
       id: `t-${Date.now()}`,
       listingId,
-      listingTitle: listing?.title ?? 'Annonce',
-      otherName: listing?.fisherName ?? 'Pêcheur',
+      listingTitle: context?.listingTitle ?? listing?.title ?? 'Annonce',
+      otherName:
+        role === 'fisher'
+          ? context?.buyerName ?? 'Acheteur'
+          : listing?.fisherName ?? 'Pêcheur',
       lastMessage: 'Conversation démarrée',
-      updatedAt: new Date().toISOString(),
+      updatedAt: now,
       unreadCount: 0,
     };
     setChatThreads((prev) => [newThread, ...prev]);
     return newThread.id;
   };
 
-  const sendChatMessage: AppState['sendChatMessage'] = (threadId, text) => {
+  const sendChatMessage: AppState['sendChatMessage'] = async (
+    threadId,
+    text
+  ) => {
     if (!role) {
       return;
     }
@@ -1270,25 +1957,62 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({
     if (!trimmed) {
       return;
     }
-    const message: ChatMessage = {
+    const createdAt = new Date().toISOString();
+    const localMessage: ChatMessage = {
       id: `m-${Date.now()}-${Math.random().toString(16).slice(2)}`,
       threadId,
       sender: role,
       text: trimmed,
-      createdAt: new Date().toISOString(),
+      createdAt,
     };
-    setChatMessages((prev) => [...prev, message]);
+    setChatMessages((prev) => [...prev, localMessage]);
     setChatThreads((prev) =>
       prev.map((thread) =>
         thread.id === threadId
           ? {
               ...thread,
               lastMessage: trimmed,
-              updatedAt: message.createdAt,
+              updatedAt: createdAt,
+              unreadCount: 0,
             }
           : thread
       )
     );
+
+    const client = supabase;
+    if (
+      isSupabaseConfigured() &&
+      client &&
+      authSource === 'supabase' &&
+      currentUser &&
+      role !== 'admin'
+    ) {
+      const payload = {
+        thread_id: threadId,
+        sender_id: currentUser.id,
+        sender_role: role,
+        text: trimmed,
+        read_by_buyer: role === 'buyer',
+        read_by_fisher: role === 'fisher',
+        created_at: createdAt,
+      };
+      const { data, error } = await client
+        .from('chat_messages')
+        .insert(payload)
+        .select('*')
+        .single();
+      if (!error && data) {
+        const mapped = mapChatMessageRow(data);
+        setChatMessages((prev) =>
+          prev.map((item) => (item.id === localMessage.id ? mapped : item))
+        );
+      }
+      void client
+        .from('chat_threads')
+        .update({ last_message: trimmed, updated_at: createdAt })
+        .eq('id', threadId)
+        .then(() => undefined);
+    }
   };
 
   const markThreadRead: AppState['markThreadRead'] = (threadId) => {
@@ -1297,6 +2021,24 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({
         thread.id === threadId ? { ...thread, unreadCount: 0 } : thread
       )
     );
+
+    const client = supabase;
+    if (
+      isSupabaseConfigured() &&
+      client &&
+      authSource === 'supabase' &&
+      currentUser &&
+      role &&
+      (role === 'buyer' || role === 'fisher')
+    ) {
+      const column = role === 'buyer' ? 'read_by_buyer' : 'read_by_fisher';
+      void client
+        .from('chat_messages')
+        .update({ [column]: true })
+        .eq('thread_id', threadId)
+        .neq('sender_role', role)
+        .then(() => undefined);
+    }
   };
 
   const updateFisherApplicantStatus: AppState['updateFisherApplicantStatus'] = (
@@ -1333,14 +2075,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({
 
   const resetApp = () => {
     setUsers(demoUsers);
-    setCurrentUserId(null);
-    setRole(null);
-    setFisherStatus('draft');
-    setFisherProfile({ ...defaultFisherProfile });
-    setBuyerStatus('draft');
-    setBuyerProfile({ ...defaultBuyerProfile });
-    setBuyerVerification(null);
-    setFisherVerification(null);
+    clearUserContext();
     setVerificationHistory([]);
     setKnownPortsState(knownPorts);
     setListings(initialListings);
@@ -1349,6 +2084,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({
     setNotifications(initialNotifications);
     setChatThreads(initialChatThreads);
     setChatMessages(initialChatMessages);
+    setAdminProfiles([]);
     setFisherApplicants(initialFisherApplicants);
     setBuyerApplicants(initialBuyerApplicants);
     setFavorites([]);
@@ -1525,6 +2261,48 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({
   }, []);
 
   useEffect(() => {
+    const client = supabase;
+    if (!isSupabaseConfigured() || !client) {
+      return;
+    }
+    let active = true;
+
+    const syncSession = async () => {
+      const { data } = await client.auth.getSession();
+      if (!active) {
+        return;
+      }
+      if (data.session?.user) {
+        const authUser = await resolveAuthUser(data.session.user);
+        await applyUserContext({ ...authUser, password: '' });
+        setAuthSource('supabase');
+      }
+    };
+
+    syncSession().catch(() => undefined);
+
+    const { data: listener } = client.auth.onAuthStateChange(
+      async (_event, session) => {
+        if (!active) {
+          return;
+        }
+        if (session?.user) {
+          const authUser = await resolveAuthUser(session.user);
+          await applyUserContext({ ...authUser, password: '' });
+          setAuthSource('supabase');
+        } else if (authSourceRef.current === 'supabase') {
+          clearUserContext();
+        }
+      }
+    );
+
+    return () => {
+      active = false;
+      listener?.subscription?.unsubscribe();
+    };
+  }, []);
+
+  useEffect(() => {
     if (!currentUser) {
       return;
     }
@@ -1655,6 +2433,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({
       notifications,
       chatThreads,
       chatMessages,
+      adminProfiles,
       fisherApplicants,
       buyerApplicants,
       unreadCount,
@@ -1663,6 +2442,8 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({
       startChat,
       sendChatMessage,
       markThreadRead,
+      refreshAdminProfiles,
+      updateUserRole,
       updateFisherApplicantStatus,
       updateBuyerApplicantStatus,
       isOnline,
@@ -1713,6 +2494,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({
       notifications,
       chatThreads,
       chatMessages,
+      adminProfiles,
       fisherApplicants,
       buyerApplicants,
       unreadCount,

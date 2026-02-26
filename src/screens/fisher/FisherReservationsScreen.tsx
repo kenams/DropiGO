@@ -1,5 +1,6 @@
 ﻿import React from 'react';
 import { FlatList, StyleSheet, Text, View } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
 import { GhostButton, PrimaryButton } from '../../components/Buttons';
 import { BackButton } from '../../components/BackButton';
 import { Card } from '../../components/Card';
@@ -11,9 +12,9 @@ import { compensationPolicy } from '../../services/compensation';
 import { useAppState } from '../../state/AppState';
 import { colors, spacing, textStyles } from '../../theme';
 
-type Props = { onBack?: () => void };
+type Props = { onBack?: () => void; onOpenChat?: (threadId: string) => void };
 
-const FisherReservationsContent: React.FC<Props> = ({ onBack }) => {
+const FisherReservationsContent: React.FC<Props> = ({ onBack, onOpenChat }) => {
   const {
     reservations,
     listings,
@@ -24,6 +25,7 @@ const FisherReservationsContent: React.FC<Props> = ({ onBack }) => {
     cancelAfterArrival,
     updateDeliveryStatus,
     updateReservationLocation,
+    startChat,
     role,
   } = useAppState();
   const canFisher = role === 'fisher' || role === 'admin';
@@ -105,6 +107,8 @@ const FisherReservationsContent: React.FC<Props> = ({ onBack }) => {
               })
             : null;
 
+          const canChat = item.status === 'confirmed' || item.status === 'picked_up';
+
           const handleGpsUpdate = () => {
             if (!hasListingCoords || !listing) {
               return;
@@ -149,6 +153,21 @@ const FisherReservationsContent: React.FC<Props> = ({ onBack }) => {
               <Text style={styles.note}>Conformité : {conformityLabel}</Text>
               {item.compensation && (
                 <CompensationNotice compensation={item.compensation} viewerRole="fisher" />
+              )}
+              {canFisher && canChat && (
+                <GhostButton
+                  label="Contacter l'acheteur"
+                  onPress={async () => {
+                    const threadId = await startChat(item.listingId, {
+                      buyerId: item.buyerId,
+                      buyerName: item.buyerName,
+                      listingTitle: item.listingTitle,
+                      fisherId: item.fisherId ?? listing?.fisherId,
+                      fisherName: listing?.fisherName,
+                    });
+                    onOpenChat?.(threadId);
+                  }}
+                />
               )}
 
               {item.status === 'pending' && canFisher && (
@@ -271,11 +290,19 @@ const FisherReservationsContent: React.FC<Props> = ({ onBack }) => {
 };
 
 export const FisherReservationsScreen: React.FC = () => {
-  return <FisherReservationsContent />;
+  const navigation = useNavigation<any>();
+  return (
+    <FisherReservationsContent
+      onOpenChat={(threadId) => (navigation as any).navigate('ChatDetail', { threadId })}
+    />
+  );
 };
 
-export const FisherReservationsStandalone: React.FC<Props> = ({ onBack }) => {
-  return <FisherReservationsContent onBack={onBack} />;
+export const FisherReservationsStandalone: React.FC<Props> = ({
+  onBack,
+  onOpenChat,
+}) => {
+  return <FisherReservationsContent onBack={onBack} onOpenChat={onOpenChat} />;
 };
 
 const styles = StyleSheet.create({
@@ -360,5 +387,9 @@ const styles = StyleSheet.create({
     marginBottom: spacing.sm,
   },
 });
+
+
+
+
 
 

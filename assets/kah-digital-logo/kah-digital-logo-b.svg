@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="2000" height="1000" viewBox="0 0 2000 1000">
+  <rect width="2000" height="1000" fill="transparent"/>
+  <text x="520" y="560" font-family="Cambria, 'Times New Roman', serif" font-size="140" font-weight="700" fill="#D6B25E">Kah-Digital</text>
+  <line x1="520" y1="610" x2="1480" y2="610" stroke="#B08C34" stroke-width="4"/>
+  <circle cx="480" cy="520" r="10" fill="#D6B25E"/>
+</svg>

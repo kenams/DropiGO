@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+﻿import React, { useEffect, useMemo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { BackButton } from '../../components/BackButton';
 import { Card } from '../../components/Card';
@@ -31,6 +31,9 @@ export const AdminDashboardScreen: React.FC<Props> = ({
     reservations,
     fisherApplicants,
     buyerApplicants,
+    adminProfiles,
+    refreshAdminProfiles,
+    updateUserRole,
     queue,
     syncHistory,
     syncQueue,
@@ -51,6 +54,18 @@ export const AdminDashboardScreen: React.FC<Props> = ({
   }, [reservations, fisherApplicants, buyerApplicants]);
 
   const lastSync = syncHistory[0]?.syncedAt;
+
+  useEffect(() => {
+    refreshAdminProfiles().catch(() => undefined);
+  }, []);
+
+  const roleLabel = (role: string) =>
+    role === 'admin' ? 'Admin' : role === 'fisher' ? 'Pêcheur' : 'Acheteur';
+
+  const roleTone = (
+    role: string
+  ): 'neutral' | 'success' | 'warning' =>
+    role === 'admin' ? 'warning' : role === 'fisher' ? 'success' : 'neutral';
 
   return (
     <Screen scroll>
@@ -109,6 +124,40 @@ export const AdminDashboardScreen: React.FC<Props> = ({
         </View>
         <GhostButton label="Forcer la synchronisation" onPress={syncQueue} />
       </Card>
+
+      <Card style={styles.card}>
+        <View style={styles.rowBetween}>
+          <Text style={styles.sectionTitle}>Utilisateurs & rôles</Text>
+          <GhostButton label="Rafraîchir" onPress={refreshAdminProfiles} />
+        </View>
+        {adminProfiles.length === 0 ? (
+          <Text style={styles.empty}>Aucun utilisateur synchronisé.</Text>
+        ) : (
+          adminProfiles.map((profile) => (
+            <View key={profile.id} style={styles.userRow}>
+              <View style={styles.rowBetween}>
+                <Text style={styles.value}>{profile.name || profile.email}</Text>
+                <Tag label={roleLabel(profile.role)} tone={roleTone(profile.role)} />
+              </View>
+              <Text style={styles.meta}>{profile.email}</Text>
+              <View style={styles.roleActions}>
+                <GhostButton
+                  label="Acheteur"
+                  onPress={() => updateUserRole(profile.id, 'buyer')}
+                />
+                <GhostButton
+                  label="Pêcheur"
+                  onPress={() => updateUserRole(profile.id, 'fisher')}
+                />
+                <GhostButton
+                  label="Admin"
+                  onPress={() => updateUserRole(profile.id, 'admin')}
+                />
+              </View>
+            </View>
+          ))
+        )}
+      </Card>
     </Screen>
   );
 };
@@ -141,6 +190,10 @@ const styles = StyleSheet.create({
     ...textStyles.h2,
     fontSize: 22,
   },
+  empty: {
+    ...textStyles.caption,
+    color: colors.muted,
+  },
   card: {
     marginTop: spacing.md,
   },
@@ -164,4 +217,19 @@ const styles = StyleSheet.create({
   value: {
     ...textStyles.bodyBold,
   },
+  userRow: {
+    marginTop: spacing.sm,
+    paddingTop: spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    gap: spacing.xs,
+  },
+  roleActions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.xs,
+    marginTop: spacing.xs,
+  },
 });
+
+

@@ -18,6 +18,7 @@ import { ProfileScreen } from '../screens/ProfileScreen';
 import { LoadingScreen } from '../screens/LoadingScreen';
 import { WelcomeScreen } from '../screens/WelcomeScreen';
 import { AdminDashboardScreen } from '../screens/admin/AdminDashboardScreen';
+import { ChatDetailScreen } from '../screens/chat/ChatDetailScreen';
 import { BackButton } from '../components/BackButton';
 import { useAppState } from '../state/AppState';
 import { colors } from '../theme';
@@ -212,6 +213,14 @@ export const RootNavigator: React.FC = () => {
         ) : (
           <RootStack.Screen name="Buyer" component={BuyerTabsNavigator} />
         )}
+        <RootStack.Screen name="ChatDetail">
+          {({ route, navigation }) => (
+            <ChatDetailScreen
+              threadId={(route.params as any)?.threadId}
+              onBack={() => navigation.goBack()}
+            />
+          )}
+        </RootStack.Screen>
       </RootStack.Navigator>
     </NavigationContainer>
   );

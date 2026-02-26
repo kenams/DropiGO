@@ -82,6 +82,7 @@ export type Listing = {
   fisherPermit?: string;
   fisherBoat?: string;
   fisherRegistration?: string;
+  fisherId?: string;
   status: ListingStatus;
   fisherName: string;
   createdAt: string;
@@ -91,6 +92,8 @@ export type Reservation = {
   id: string;
   checkoutId?: string;
   listingId: string;
+  buyerId?: string;
+  fisherId?: string;
   listingTitle: string;
   buyerName: string;
   qtyKg: number;

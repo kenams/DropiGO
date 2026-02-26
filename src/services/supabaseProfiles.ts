@@ -1,7 +1,7 @@
 import { AuthUser, Role } from '../types';
 import { supabase } from './supabase';
 
-type ProfileRow = {
+export type ProfileRow = {
   id: string;
   role: Role;
   name: string;
@@ -18,7 +18,7 @@ type AuthMeta = {
   phone?: string;
 };
 
-const toAuthUser = (profile: ProfileRow): AuthUser => ({
+export const toAuthUser = (profile: ProfileRow): AuthUser => ({
   id: profile.id,
   email: profile.email ?? '',
   phone: profile.phone ?? undefined,
@@ -30,7 +30,7 @@ const toAuthUser = (profile: ProfileRow): AuthUser => ({
 });
 
 const baseProfileFromAuth = (
-  authUser: { id: string; email: string | null; user_metadata?: AuthMeta },
+  authUser: { id: string; email?: string | null; user_metadata?: AuthMeta },
   fallback: Partial<ProfileRow> = {}
 ): ProfileRow => {
   const meta = authUser.user_metadata ?? {};
@@ -61,7 +61,7 @@ export const fetchProfile = async (userId: string): Promise<ProfileRow | null> =
 };
 
 export const upsertProfile = async (
-  authUser: { id: string; email: string | null; user_metadata?: AuthMeta },
+  authUser: { id: string; email?: string | null; user_metadata?: AuthMeta },
   fallback: Partial<ProfileRow> = {}
 ): Promise<ProfileRow | null> => {
   if (!supabase) {
@@ -80,9 +80,30 @@ export const upsertProfile = async (
 };
 
 export const resolveAuthUser = async (
-  authUser: { id: string; email: string | null; user_metadata?: AuthMeta }
+  authUser: { id: string; email?: string | null; user_metadata?: AuthMeta }
 ): Promise<AuthUser> => {
   const profile =
     (await fetchProfile(authUser.id)) ?? baseProfileFromAuth(authUser);
   return toAuthUser(profile);
+};
+
+export const fetchAllProfiles = async (): Promise<ProfileRow[]> => {
+  if (!supabase) {
+    return [];
+  }
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('id, role, name, company, phone, email, created_at')
+    .order('created_at', { ascending: false });
+  if (error || !data) {
+    return [];
+  }
+  return data as ProfileRow[];
+};
+
+export const updateProfileRole = async (userId: string, role: Role) => {
+  if (!supabase) {
+    return;
+  }
+  await supabase.from('profiles').update({ role }).eq('id', userId);
 };

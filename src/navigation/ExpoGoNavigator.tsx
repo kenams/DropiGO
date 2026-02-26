@@ -14,6 +14,7 @@ import { FisherHomeScreen } from '../screens/fisher/FisherHomeScreen';
 import { FisherReservationsStandalone } from '../screens/fisher/FisherReservationsScreen';
 import { WelcomeScreen } from '../screens/WelcomeScreen';
 import { AdminDashboardScreen } from '../screens/admin/AdminDashboardScreen';
+import { ChatDetailScreen } from '../screens/chat/ChatDetailScreen';
 import { BackButton } from '../components/BackButton';
 import { useAppState } from '../state/AppState';
 import { colors, spacing, textStyles } from '../theme';
@@ -97,8 +98,19 @@ const BuyerTabs: React.FC = () => {
   const [activeTab, setActiveTab] = useState<BuyerTabKey>('Feed');
   const [selectedListingId, setSelectedListingId] = useState<string | null>(null);
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
+  const [selectedChatThreadId, setSelectedChatThreadId] = useState<string | null>(
+    null
+  );
   const insets = useSafeAreaInsets();
   const content = useMemo(() => {
+    if (selectedChatThreadId) {
+      return (
+        <ChatDetailScreen
+          threadId={selectedChatThreadId}
+          onBack={() => setSelectedChatThreadId(null)}
+        />
+      );
+    }
     if (selectedListingId) {
       return (
         <ListingDetailStandalone
@@ -127,26 +139,33 @@ const BuyerTabs: React.FC = () => {
         <BuyerReservationsStandalone
           onBack={() => setActiveTab('Feed')}
           onOpenTracking={setSelectedOrderId}
+          onOpenChat={setSelectedChatThreadId}
         />
       );
     }
     return <ProfileStandalone onBack={() => setActiveTab('Feed')} />;
-  }, [activeTab, selectedListingId, selectedOrderId]);
+  }, [
+    activeTab,
+    selectedListingId,
+    selectedOrderId,
+    selectedChatThreadId,
+  ]);
 
   return (
     <View style={styles.root}>
       <View
         style={[
           styles.content,
-          !(selectedListingId || selectedOrderId) && styles.contentWithTabs,
-          !(selectedListingId || selectedOrderId) && {
+          !(selectedListingId || selectedOrderId || selectedChatThreadId) &&
+            styles.contentWithTabs,
+          !(selectedListingId || selectedOrderId || selectedChatThreadId) && {
             paddingBottom: TAB_BAR_HEIGHT + insets.bottom,
           },
         ]}
       >
         {content}
       </View>
-      {!(selectedListingId || selectedOrderId) && (
+      {!(selectedListingId || selectedOrderId || selectedChatThreadId) && (
         <TabBar
           tabs={buyerTabs}
           activeTab={activeTab}
@@ -160,8 +179,19 @@ const BuyerTabs: React.FC = () => {
 
 const FisherTabs: React.FC = () => {
   const [activeTab, setActiveTab] = useState<FisherTabKey>('Home');
+  const [selectedChatThreadId, setSelectedChatThreadId] = useState<string | null>(
+    null
+  );
   const insets = useSafeAreaInsets();
   const content = useMemo(() => {
+    if (selectedChatThreadId) {
+      return (
+        <ChatDetailScreen
+          threadId={selectedChatThreadId}
+          onBack={() => setSelectedChatThreadId(null)}
+        />
+      );
+    }
     if (activeTab === 'Home') {
       return <FisherHomeScreen />;
     }
@@ -169,28 +199,37 @@ const FisherTabs: React.FC = () => {
       return <CreateListingStandalone onBack={() => setActiveTab('Home')} />;
     }
     if (activeTab === 'Reservations') {
-      return <FisherReservationsStandalone onBack={() => setActiveTab('Home')} />;
+      return (
+        <FisherReservationsStandalone
+          onBack={() => setActiveTab('Home')}
+          onOpenChat={setSelectedChatThreadId}
+        />
+      );
     }
     return <ProfileStandalone onBack={() => setActiveTab('Home')} />;
-  }, [activeTab]);
+  }, [activeTab, selectedChatThreadId]);
 
   return (
     <View style={styles.root}>
       <View
         style={[
           styles.content,
-          styles.contentWithTabs,
-          { paddingBottom: TAB_BAR_HEIGHT + insets.bottom },
+          !selectedChatThreadId && styles.contentWithTabs,
+          !selectedChatThreadId && {
+            paddingBottom: TAB_BAR_HEIGHT + insets.bottom,
+          },
         ]}
       >
         {content}
       </View>
-      <TabBar
-        tabs={fisherTabs}
-        activeTab={activeTab}
-        onSelect={setActiveTab}
-        bottomInset={insets.bottom}
-      />
+      {!selectedChatThreadId && (
+        <TabBar
+          tabs={fisherTabs}
+          activeTab={activeTab}
+          onSelect={setActiveTab}
+          bottomInset={insets.bottom}
+        />
+      )}
     </View>
   );
 };

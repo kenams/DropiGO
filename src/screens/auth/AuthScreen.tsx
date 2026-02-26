@@ -12,6 +12,7 @@ import { Role } from '../../types';
 export const AuthScreen: React.FC = () => {
   const { signIn, signUp } = useAppState();
   const [mode, setMode] = useState<'login' | 'signup'>('login');
+  const [loading, setLoading] = useState(false);
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
@@ -36,17 +37,26 @@ export const AuthScreen: React.FC = () => {
     setPassword('admin123');
   };
 
-  const handleLogin = () => {
-    const result = signIn(identifier, password);
+  const handleLogin = async () => {
+    if (loading) {
+      return;
+    }
+    setLoading(true);
+    const result = await signIn(identifier, password);
     if (!result.ok) {
       setError(result.message ?? 'Erreur de connexion.');
     } else {
       setError('');
     }
+    setLoading(false);
   };
 
-  const handleSignup = () => {
-    const result = signUp({
+  const handleSignup = async () => {
+    if (loading) {
+      return;
+    }
+    setLoading(true);
+    const result = await signUp({
       name,
       email,
       phone: phone || undefined,
@@ -59,6 +69,7 @@ export const AuthScreen: React.FC = () => {
     } else {
       setError('');
     }
+    setLoading(false);
   };
 
   return (
@@ -97,7 +108,11 @@ export const AuthScreen: React.FC = () => {
               secureTextEntry
             />
             {error.length > 0 && <Text style={styles.error}>{error}</Text>}
-            <PrimaryButton label="Se connecter" onPress={handleLogin} />
+            <PrimaryButton
+              label={loading ? 'Connexion...' : 'Se connecter'}
+              onPress={handleLogin}
+              disabled={loading}
+            />
 
             <View style={styles.demoBox}>
               <Text style={styles.demoTitle}>Comptes démo</Text>
@@ -154,7 +169,11 @@ export const AuthScreen: React.FC = () => {
             )}
 
             {error.length > 0 && <Text style={styles.error}>{error}</Text>}
-            <PrimaryButton label="Créer le compte" onPress={handleSignup} />
+            <PrimaryButton
+              label={loading ? 'Création...' : 'Créer le compte'}
+              onPress={handleSignup}
+              disabled={loading}
+            />
           </>
         )}
       </Card>

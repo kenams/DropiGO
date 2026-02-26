@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="2400" height="1200" viewBox="0 0 2400 1200">
+  <defs>
+    <linearGradient id="gold" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#FCE6A4"/>
+      <stop offset="50%" stop-color="#E2C478"/>
+      <stop offset="100%" stop-color="#9C6F22"/>
+    </linearGradient>
+  </defs>
+  <rect width="2400" height="1200" fill="transparent"/>
+  <circle cx="520" cy="600" r="300" fill="none" stroke="#BC9234" stroke-width="7"/>
+  <text x="400" y="680" font-family="Times New Roman, serif" font-size="360" font-weight="700" fill="url(#gold)">K</text>
+  <text x="920" y="650" font-family="Times New Roman, serif" font-size="150" font-weight="700" fill="url(#gold)">Kah-Digital</text>
+  <line x1="920" y1="700" x2="1800" y2="700" stroke="#BC9234" stroke-width="4"/>
+</svg>

@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="2000" height="1000" viewBox="0 0 2000 1000">
+  <rect width="2000" height="1000" fill="transparent"/>
+  <polygon points="500,190 760,450 500,710 240,450" fill="none" stroke="#D6B25E" stroke-width="8"/>
+  <text x="415" y="560" font-family="Cambria, 'Times New Roman', serif" font-size="320" font-weight="700" fill="#D6B25E">K</text>
+  <text x="900" y="520" font-family="Cambria, 'Times New Roman', serif" font-size="90" font-weight="700" fill="#D6B25E">Kah-Digital</text>
+  <text x="900" y="620" font-family="Cambria, 'Times New Roman', serif" font-size="80" fill="#F0ECE4">Creative Studio</text>
+</svg>
