@@ -24,7 +24,9 @@ const FisherReservationsContent: React.FC<Props> = ({ onBack }) => {
     cancelAfterArrival,
     updateDeliveryStatus,
     updateReservationLocation,
+    role,
   } = useAppState();
+  const canFisher = role === 'fisher' || role === 'admin';
 
   const ratePercent = Math.round(compensationPolicy.rate * 100);
 
@@ -149,7 +151,7 @@ const FisherReservationsContent: React.FC<Props> = ({ onBack }) => {
                 <CompensationNotice compensation={item.compensation} viewerRole="fisher" />
               )}
 
-              {item.status === 'pending' && (
+              {item.status === 'pending' && canFisher && (
                 <View style={styles.actionsRow}>
                   <PrimaryButton
                     label="Confirmer la réservation"
@@ -164,68 +166,89 @@ const FisherReservationsContent: React.FC<Props> = ({ onBack }) => {
                   />
                 </View>
               )}
+              {item.status === 'pending' && !canFisher && (
+                <Text style={styles.noticeText}>
+                  Actions réservées aux pêcheurs.
+                </Text>
+              )}
               {item.status === 'confirmed' && (
                 <View style={styles.arrivalBox}>
                   <Text style={styles.sectionTitle}>Arrivée & RDV</Text>
-                  {!item.fisherArrivalDeclaredAt && (
-                    <PrimaryButton
-                      label="Je suis au point de RDV"
-                      onPress={() => declareFisherArrival(item.id)}
-                    />
-                  )}
-                  {item.fisherArrivalDeclaredAt && (
-                    <Text style={styles.confirmText}>
-                      Présence pêcheur confirmée.
-                    </Text>
-                  )}
-                  {item.buyerArrivalRequestedAt && !item.buyerArrivalConfirmedAt && (
-                    <GhostButton
-                      label="Confirmer arrivée acheteur"
-                      onPress={() => confirmBuyerArrival(item.id)}
-                    />
-                  )}
-                  {item.buyerArrivalConfirmedAt && (
-                    <Text style={styles.confirmText}>
-                      Arrivée acheteur confirmée.
-                    </Text>
-                  )}
-                  {item.fisherArrivalDeclaredAt && !item.compensation && (
+                  {canFisher ? (
                     <>
-                      <View style={styles.trackRow}>
-                        <GhostButton
-                          label="En mer"
-                          onPress={() => updateDeliveryStatus(item.id, 'at_sea')}
+                      {!item.fisherArrivalDeclaredAt && (
+                        <PrimaryButton
+                          label="Je suis au point de RDV"
+                          onPress={() => declareFisherArrival(item.id)}
                         />
-                        <GhostButton
-                          label="Approche"
-                          onPress={() =>
-                            updateDeliveryStatus(item.id, 'approaching_port')
-                          }
-                        />
-                        <GhostButton
-                          label="Arrivé"
-                          onPress={() => updateDeliveryStatus(item.id, 'arrived')}
-                        />
-                        {hasListingCoords && (
-                          <GhostButton label="MAJ GPS" onPress={handleGpsUpdate} />
-                        )}
-                      </View>
-                      {!hasListingCoords && (
-                        <Text style={styles.note}>
-                          GPS indisponible (ajoutez une position à l’annonce).
+                      )}
+                      {item.fisherArrivalDeclaredAt && (
+                        <Text style={styles.confirmText}>
+                          Présence pêcheur confirmée.
                         </Text>
                       )}
-                      <View style={styles.incidentActions}>
-                        <GhostButton
-                          label="Acheteur en retard"
-                          onPress={() => declareDelay(item.id, 'buyer')}
-                        />
-                        <GhostButton
-                          label="Acheteur absent / annulation"
-                          onPress={() => cancelAfterArrival(item.id, 'buyer')}
-                        />
-                      </View>
+                      {item.buyerArrivalRequestedAt &&
+                        !item.buyerArrivalConfirmedAt && (
+                          <GhostButton
+                            label="Confirmer arrivée acheteur"
+                            onPress={() => confirmBuyerArrival(item.id)}
+                          />
+                        )}
+                      {item.buyerArrivalConfirmedAt && (
+                        <Text style={styles.confirmText}>
+                          Arrivée acheteur confirmée.
+                        </Text>
+                      )}
+                      {item.fisherArrivalDeclaredAt && !item.compensation && (
+                        <>
+                          <View style={styles.trackRow}>
+                            <GhostButton
+                              label="En mer"
+                              onPress={() =>
+                                updateDeliveryStatus(item.id, 'at_sea')
+                              }
+                            />
+                            <GhostButton
+                              label="Approche"
+                              onPress={() =>
+                                updateDeliveryStatus(item.id, 'approaching_port')
+                              }
+                            />
+                            <GhostButton
+                              label="Arrivé"
+                              onPress={() =>
+                                updateDeliveryStatus(item.id, 'arrived')
+                              }
+                            />
+                            {hasListingCoords && (
+                              <GhostButton
+                                label="MAJ GPS"
+                                onPress={handleGpsUpdate}
+                              />
+                            )}
+                          </View>
+                          {!hasListingCoords && (
+                            <Text style={styles.note}>
+                              GPS indisponible (ajoutez une position à l’annonce).
+                            </Text>
+                          )}
+                          <View style={styles.incidentActions}>
+                            <GhostButton
+                              label="Acheteur en retard"
+                              onPress={() => declareDelay(item.id, 'buyer')}
+                            />
+                            <GhostButton
+                              label="Acheteur absent / annulation"
+                              onPress={() => cancelAfterArrival(item.id, 'buyer')}
+                            />
+                          </View>
+                        </>
+                      )}
                     </>
+                  ) : (
+                    <Text style={styles.noticeText}>
+                      Actions réservées aux pêcheurs.
+                    </Text>
                   )}
                   <Text style={styles.policyText}>
                     Barème : {ratePercent}% du total, min {compensationPolicy.min} €, max{' '}
@@ -233,7 +256,7 @@ const FisherReservationsContent: React.FC<Props> = ({ onBack }) => {
                   </Text>
                 </View>
               )}
-              {item.status === 'confirmed' && (
+              {item.status === 'confirmed' && canFisher && (
                 <PrimaryButton
                   label="Confirmer la remise"
                   onPress={() => updateReservationStatus(item.id, 'picked_up')}
@@ -330,6 +353,11 @@ const styles = StyleSheet.create({
   policyText: {
     ...textStyles.caption,
     color: colors.muted,
+  },
+  noticeText: {
+    ...textStyles.caption,
+    color: colors.muted,
+    marginBottom: spacing.sm,
   },
 });
 

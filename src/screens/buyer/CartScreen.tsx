@@ -11,8 +11,9 @@ const COMMISSION_RATE = 0.08;
 type Props = { onBack?: () => void };
 
 const CartContent: React.FC<Props> = ({ onBack }) => {
-  const { cart, updateCartQty, removeCartItem, clearCart, checkoutCart } =
+  const { cart, updateCartQty, removeCartItem, clearCart, checkoutCart, role } =
     useAppState();
+  const canBuyer = role === 'buyer' || role === 'admin';
   const [pickupTime, setPickupTime] = useState('');
   const [note, setNote] = useState('');
   const [error, setError] = useState('');
@@ -58,35 +59,43 @@ const CartContent: React.FC<Props> = ({ onBack }) => {
             <Text style={styles.meta}>{item.fisherName}</Text>
             <Text style={styles.meta}>{item.location}</Text>
             <Text style={styles.meta}>{item.pricePerKg.toFixed(2)} € / kg</Text>
-            <View style={styles.qtyRow}>
-              <Pressable
-                style={styles.qtyButton}
-                onPress={() => updateCartQty(item.id, item.qtyKg - 1)}
-              >
-                <Text style={styles.qtyButtonText}>-</Text>
-              </Pressable>
-              <TextInput
-                value={String(item.qtyKg)}
-                onChangeText={(value) => {
-                  const next = Number(value.replace(',', '.'));
-                  if (Number.isFinite(next)) {
-                    updateCartQty(item.id, next);
-                  }
-                }}
-                keyboardType="numeric"
-                style={styles.qtyInput}
-              />
-              <Pressable
-                style={styles.qtyButton}
-                onPress={() => updateCartQty(item.id, item.qtyKg + 1)}
-              >
-                <Text style={styles.qtyButtonText}>+</Text>
-              </Pressable>
-            </View>
+            {canBuyer ? (
+              <View style={styles.qtyRow}>
+                <Pressable
+                  style={styles.qtyButton}
+                  onPress={() => updateCartQty(item.id, item.qtyKg - 1)}
+                >
+                  <Text style={styles.qtyButtonText}>-</Text>
+                </Pressable>
+                <TextInput
+                  value={String(item.qtyKg)}
+                  onChangeText={(value) => {
+                    const next = Number(value.replace(',', '.'));
+                    if (Number.isFinite(next)) {
+                      updateCartQty(item.id, next);
+                    }
+                  }}
+                  keyboardType="numeric"
+                  style={styles.qtyInput}
+                />
+                <Pressable
+                  style={styles.qtyButton}
+                  onPress={() => updateCartQty(item.id, item.qtyKg + 1)}
+                >
+                  <Text style={styles.qtyButtonText}>+</Text>
+                </Pressable>
+              </View>
+            ) : (
+              <Text style={styles.readOnlyText}>
+                Quantité : {item.qtyKg} kg
+              </Text>
+            )}
             <Text style={styles.lineTotal}>
               Sous-total: {(item.qtyKg * item.pricePerKg).toFixed(2)} €
             </Text>
-            <GhostButton label="Retirer" onPress={() => removeCartItem(item.id)} />
+            {canBuyer && (
+              <GhostButton label="Retirer" onPress={() => removeCartItem(item.id)} />
+            )}
           </Card>
         )}
       />
@@ -110,29 +119,39 @@ const CartContent: React.FC<Props> = ({ onBack }) => {
         Paiement placé en séquestre jusqu’à validation de la remise.
       </Text>
 
-      <Text style={styles.sectionTitle}>Créneau de retrait</Text>
-      <TextInput
-        value={pickupTime}
-        onChangeText={setPickupTime}
-        placeholder="Ex: Aujourd'hui 18:00"
-        placeholderTextColor={colors.muted}
-        style={styles.input}
-      />
-      <Text style={styles.sectionTitle}>Note pour le pêcheur (optionnel)</Text>
-      <TextInput
-        value={note}
-        onChangeText={setNote}
-        placeholder="Ex: préparer en caissettes"
-        placeholderTextColor={colors.muted}
-        style={styles.input}
-      />
+      {canBuyer ? (
+        <>
+          <Text style={styles.sectionTitle}>Créneau de retrait</Text>
+          <TextInput
+            value={pickupTime}
+            onChangeText={setPickupTime}
+            placeholder="Ex: Aujourd'hui 18:00"
+            placeholderTextColor={colors.muted}
+            style={styles.input}
+          />
+          <Text style={styles.sectionTitle}>
+            Note pour le pêcheur (optionnel)
+          </Text>
+          <TextInput
+            value={note}
+            onChangeText={setNote}
+            placeholder="Ex: préparer en caissettes"
+            placeholderTextColor={colors.muted}
+            style={styles.input}
+          />
 
-      {error.length > 0 && <Text style={styles.error}>{error}</Text>}
+          {error.length > 0 && <Text style={styles.error}>{error}</Text>}
 
-      <View style={styles.actions}>
-        <PrimaryButton label="Payer en séquestre" onPress={handleCheckout} />
-        <GhostButton label="Vider le panier" onPress={clearCart} />
-      </View>
+          <View style={styles.actions}>
+            <PrimaryButton label="Payer en séquestre" onPress={handleCheckout} />
+            <GhostButton label="Vider le panier" onPress={clearCart} />
+          </View>
+        </>
+      ) : (
+        <Text style={styles.noticeText}>
+          Actions de paiement réservées aux acheteurs.
+        </Text>
+      )}
     </Screen>
   );
 };
@@ -209,6 +228,12 @@ const styles = StyleSheet.create({
     ...textStyles.caption,
     marginBottom: spacing.sm,
   },
+  readOnlyText: {
+    ...textStyles.caption,
+    color: colors.muted,
+    marginTop: spacing.sm,
+    marginBottom: spacing.sm,
+  },
   summaryCard: {
     marginBottom: spacing.md,
   },
@@ -251,5 +276,10 @@ const styles = StyleSheet.create({
     ...textStyles.caption,
     color: colors.muted,
     marginBottom: spacing.md,
+  },
+  noticeText: {
+    ...textStyles.caption,
+    color: colors.muted,
+    marginBottom: spacing.lg,
   },
 });

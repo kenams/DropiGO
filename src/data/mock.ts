@@ -262,7 +262,7 @@ export const initialFisherApplicants: FisherApplicant[] = [
     phone: '+33 6 98 76 54 32',
     email: 'kenza.a@exemple.fr',
     idNumber: 'ID-119403',
-    status: 'approved',
+    status: 'verified',
     submittedAt: new Date(Date.now() - 1000 * 60 * 60 * 36).toISOString(),
   },
 ];
@@ -293,7 +293,7 @@ export const initialBuyerApplicants: BuyerApplicant[] = [
     paymentMethod: 'Virement pro',
     idNumber: 'ID-ALG-112290',
     address: 'Alger, front de mer',
-    status: 'approved',
+    status: 'verified',
     submittedAt: new Date(Date.now() - 1000 * 60 * 60 * 20).toISOString(),
   },
 ];

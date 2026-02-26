@@ -4,13 +4,12 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createStackNavigator } from '@react-navigation/stack';
 import { RouteProp } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
-import { OnboardingScreen } from '../screens/fisher/OnboardingScreen';
+import { StyleSheet, View } from 'react-native';
 import { FisherHomeScreen } from '../screens/fisher/FisherHomeScreen';
 import { CreateListingScreen } from '../screens/fisher/CreateListingScreen';
 import { FisherReservationsScreen } from '../screens/fisher/FisherReservationsScreen';
 import { BuyerHomeScreen } from '../screens/buyer/BuyerHomeScreen';
 import { ListingDetailScreen } from '../screens/buyer/ListingDetailScreen';
-import { BuyerOnboardingScreen } from '../screens/buyer/BuyerOnboardingScreen';
 import { CartScreen } from '../screens/buyer/CartScreen';
 import { OrderTrackingScreen } from '../screens/buyer/OrderTrackingScreen';
 import { BuyerReservationsScreen } from '../screens/buyer/BuyerReservationsScreen';
@@ -18,6 +17,8 @@ import { AuthScreen } from '../screens/auth/AuthScreen';
 import { ProfileScreen } from '../screens/ProfileScreen';
 import { LoadingScreen } from '../screens/LoadingScreen';
 import { WelcomeScreen } from '../screens/WelcomeScreen';
+import { AdminDashboardScreen } from '../screens/admin/AdminDashboardScreen';
+import { BackButton } from '../components/BackButton';
 import { useAppState } from '../state/AppState';
 import { colors } from '../theme';
 import {
@@ -159,8 +160,33 @@ const FisherTabsNavigator = () => {
   );
 };
 
+const AdminPortal: React.FC<{ onSignOut: () => void }> = ({ onSignOut }) => {
+  const [mode, setMode] = useState<'admin' | 'buyer' | 'fisher'>('admin');
+
+  if (mode === 'admin') {
+    return (
+      <AdminDashboardScreen
+        onBack={onSignOut}
+        onOpenBuyer={() => setMode('buyer')}
+        onOpenFisher={() => setMode('fisher')}
+      />
+    );
+  }
+
+  return (
+    <View style={styles.adminRoot}>
+      {mode === 'buyer' ? <BuyerTabsNavigator /> : <FisherTabsNavigator />}
+      <BackButton
+        label="Admin"
+        onPress={() => setMode('admin')}
+        style={styles.adminBack}
+      />
+    </View>
+  );
+};
+
 export const RootNavigator: React.FC = () => {
-  const { currentUser, role, fisherStatus, buyerStatus, hydrated } = useAppState();
+  const { currentUser, role, hydrated, signOut } = useAppState();
   const effectiveRole = currentUser?.role ?? role;
   const [showWelcome, setShowWelcome] = useState(true);
 
@@ -177,10 +203,10 @@ export const RootNavigator: React.FC = () => {
           </RootStack.Screen>
         ) : !currentUser ? (
           <RootStack.Screen name="Auth" component={AuthScreen} />
-        ) : effectiveRole === 'fisher' && fisherStatus !== 'approved' ? (
-          <RootStack.Screen name="Onboarding" component={OnboardingScreen} />
-        ) : effectiveRole === 'buyer' && buyerStatus !== 'approved' ? (
-          <RootStack.Screen name="BuyerOnboarding" component={BuyerOnboardingScreen} />
+        ) : effectiveRole === 'admin' ? (
+          <RootStack.Screen name="Admin">
+            {() => <AdminPortal onSignOut={signOut} />}
+          </RootStack.Screen>
         ) : effectiveRole === 'fisher' ? (
           <RootStack.Screen name="Fisher" component={FisherTabsNavigator} />
         ) : (
@@ -190,3 +216,15 @@ export const RootNavigator: React.FC = () => {
     </NavigationContainer>
   );
 };
+
+const styles = StyleSheet.create({
+  adminRoot: {
+    flex: 1,
+  },
+  adminBack: {
+    position: 'absolute',
+    top: 16,
+    right: 16,
+    zIndex: 20,
+  },
+});

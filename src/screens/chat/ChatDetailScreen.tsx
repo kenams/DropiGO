@@ -12,6 +12,7 @@ type Props = {
 export const ChatDetailScreen: React.FC<Props> = ({ threadId, onBack }) => {
   const { role, chatThreads, chatMessages, sendChatMessage, markThreadRead } =
     useAppState();
+  const canChat = role === 'buyer' || role === 'fisher' || role === 'admin';
   const [text, setText] = useState('');
 
   const thread = chatThreads.find((t) => t.id === threadId);
@@ -25,6 +26,9 @@ export const ChatDetailScreen: React.FC<Props> = ({ threadId, onBack }) => {
   }, [threadId]);
 
   const handleSend = () => {
+    if (!canChat) {
+      return;
+    }
     sendChatMessage(threadId, text);
     setText('');
   };
@@ -38,8 +42,8 @@ export const ChatDetailScreen: React.FC<Props> = ({ threadId, onBack }) => {
           </Pressable>
         )}
         <View>
-          <Text style={styles.title}>{thread?.otherName ?? 'Conversation'}</Text>
-          <Text style={styles.subtitle}>{thread?.listingTitle ?? ''}</Text>
+          <Text style={styles.title}>{thread?.otherName  ?? 'Conversation'}</Text>
+          <Text style={styles.subtitle}>{thread?.listingTitle  ?? ''}</Text>
         </View>
       </View>
 
@@ -65,18 +69,24 @@ export const ChatDetailScreen: React.FC<Props> = ({ threadId, onBack }) => {
         }}
       />
 
-      <View style={styles.inputRow}>
-        <TextInput
-          value={text}
-          onChangeText={setText}
-          placeholder="Écrire un message…"
-          placeholderTextColor={colors.muted}
-          style={styles.input}
-        />
-        <Pressable onPress={handleSend} style={styles.sendButton}>
-          <Ionicons name="send" size={18} color="#FFFFFF" />
-        </Pressable>
-      </View>
+      {canChat ? (
+        <View style={styles.inputRow}>
+          <TextInput
+            value={text}
+            onChangeText={setText}
+            placeholder="Écrire un message…"
+            placeholderTextColor={colors.muted}
+            style={styles.input}
+          />
+          <Pressable onPress={handleSend} style={styles.sendButton}>
+            <Ionicons name="send" size={18} color="#FFFFFF" />
+          </Pressable>
+        </View>
+      ) : (
+        <Text style={styles.noticeText}>
+          Envoi réservé aux comptes métier.
+        </Text>
+      )}
     </View>
   );
 };
@@ -169,6 +179,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: colors.accent,
+  },
+  noticeText: {
+    ...textStyles.caption,
+    color: colors.muted,
+    marginBottom: spacing.md,
   },
 });
 

@@ -1,5 +1,5 @@
-﻿import React from 'react';
-import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import React, { useState } from 'react';
+import { Alert, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { PrimaryButton, GhostButton } from '../../components/Buttons';
 import { BackButton } from '../../components/BackButton';
@@ -9,61 +9,71 @@ import { Logo } from '../../components/Logo';
 import { PortSuggestions } from '../../components/PortSuggestions';
 import { Screen } from '../../components/Screen';
 import { Tag } from '../../components/Tag';
+import { startFisherVerification } from '../../services/verification';
 import { useAppState } from '../../state/AppState';
-import { colors, radius, spacing, textStyles } from '../../theme';
+import { colors, spacing, textStyles } from '../../theme';
+import { VerificationCheck } from '../../types';
 
 type Props = { onBack?: () => void };
 
+type FisherDocField =
+  | 'licensePhotoUri'
+  | 'boatPhotoUri'
+  | 'insurancePhotoUri'
+  | 'ribPhotoUri';
+
+const statusLabel = (status: 'draft' | 'pending' | 'verified' | 'rejected') => {
+  if (status === 'verified') {
+    return { label: 'Vérifié', tone: 'success' as const };
+  }
+  if (status === 'rejected') {
+    return { label: 'Refusé', tone: 'danger' as const };
+  }
+  if (status === 'pending') {
+    return { label: 'En attente', tone: 'warning' as const };
+  }
+  return { label: 'À compléter', tone: 'warning' as const };
+};
+
+const checkTone = (check: VerificationCheck) => {
+  if (check.status === 'passed') {
+    return 'success' as const;
+  }
+  if (check.status === 'failed') {
+    return 'danger' as const;
+  }
+  return 'warning' as const;
+};
+
+const checkLabel = (check: VerificationCheck) => {
+  if (check.status === 'passed') {
+    return 'OK';
+  }
+  if (check.status === 'failed') {
+    return 'KO';
+  }
+  return 'En attente';
+};
+
 const OnboardingContent: React.FC<Props> = ({ onBack }) => {
   const {
+    role,
     fisherStatus,
-    setFisherStatus,
     signOut,
     fisherProfile,
     setFisherProfile,
     knownPorts,
     registerPort,
+    submitFisherVerification,
+    fisherVerification,
   } = useAppState();
+  const canFisher = role === 'fisher' || role === 'admin';
+  const [showPicker, setShowPicker] = useState(false);
+  const [sending, setSending] = useState(false);
 
   const updateField = (key: keyof typeof fisherProfile) => (value: string) => {
     setFisherProfile({ ...fisherProfile, [key]: value });
   };
-
-  const pickDocument = async (
-    key: 'licensePhotoUri' | 'boatPhotoUri' | 'insurancePhotoUri' | 'ribPhotoUri'
-  ) => {
-    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!permission.granted) {
-      return;
-    }
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      quality: 0.7,
-    });
-    if (!result.canceled) {
-      setFisherProfile({ ...fisherProfile, [key]: result.assets[0].uri });
-    }
-  };
-
-  const requiredFields = [
-    fisherProfile.name,
-    fisherProfile.permit,
-    fisherProfile.boat,
-    fisherProfile.registration,
-    fisherProfile.port,
-    fisherProfile.insurance,
-    fisherProfile.bankAccount,
-    fisherProfile.phone,
-    fisherProfile.email,
-    fisherProfile.idNumber,
-  ];
-  const isComplete = requiredFields.every((value) => value.trim().length > 0);
-  const progress = Math.round(
-    (requiredFields.filter((value) => value.trim().length > 0).length /
-      requiredFields.length) *
-      100
-  );
-  const canSubmit = fisherStatus === 'draft' && isComplete;
 
   const handleBack = () => {
     if (onBack) {
@@ -73,23 +83,118 @@ const OnboardingContent: React.FC<Props> = ({ onBack }) => {
     signOut();
   };
 
+  const report = fisherVerification ?? startFisherVerification();
+  const status = statusLabel(fisherStatus);
+
+  const handleAutoFill = () => {
+    const profile = {
+      ...fisherProfile,
+      name: fisherProfile.name || 'Loïc Martin',
+      permit: fisherProfile.permit || 'FR-PECH-9821',
+      boat: fisherProfile.boat || 'L’Étoile Marine',
+      registration: fisherProfile.registration || 'SE-4592',
+      port: fisherProfile.port || 'Port de Sète',
+      insurance: fisherProfile.insurance || 'Assurance Maritime AXA',
+      bankAccount:
+        fisherProfile.bankAccount || 'FR76 3000 6000 0112 3456 7890 189',
+      phone: fisherProfile.phone || '+33 6 11 11 11 11',
+      email: fisherProfile.email || 'pecheur@dropipeche.demo',
+      idNumber: fisherProfile.idNumber || 'ID-FR-125971',
+    };
+    setFisherProfile(profile);
+    return profile;
+  };
+
+  const handleSubmit = async () => {
+    if (sending) {
+      return;
+    }
+    if (
+      !fisherProfile.licensePhotoUri &&
+      !fisherProfile.boatPhotoUri &&
+      !fisherProfile.insurancePhotoUri &&
+      !fisherProfile.ribPhotoUri
+    ) {
+      Alert.alert(
+        'Documents manquants',
+        'Ajoutez au moins un document avant d’envoyer le dossier.'
+      );
+      return;
+    }
+    setSending(true);
+    const filledProfile = handleAutoFill();
+    await submitFisherVerification(filledProfile);
+    setSending(false);
+  };
+
+  const pickFromLibrary = async (field: FisherDocField) => {
+    const { status: permission } =
+      await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (permission !== 'granted') {
+      Alert.alert(
+        'Autorisation requise',
+        'Autorisez l’accès aux photos pour importer un document.'
+      );
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      quality: 0.7,
+    });
+    if (!result.canceled) {
+      setFisherProfile({ ...fisherProfile, [field]: result.assets[0].uri });
+      setShowPicker(false);
+    }
+  };
+
+  const takePhoto = async (field: FisherDocField) => {
+    const { status: permission } =
+      await ImagePicker.requestCameraPermissionsAsync();
+    if (permission !== 'granted') {
+      Alert.alert(
+        'Autorisation requise',
+        'Autorisez la caméra pour capturer un document.'
+      );
+      return;
+    }
+    const result = await ImagePicker.launchCameraAsync({
+      quality: 0.7,
+    });
+    if (!result.canceled) {
+      setFisherProfile({ ...fisherProfile, [field]: result.assets[0].uri });
+      setShowPicker(false);
+    }
+  };
+
+  if (!canFisher) {
+    return (
+      <Screen scroll>
+        {onBack && <BackButton onPress={handleBack} style={styles.back} />}
+        <Logo size={72} showWordmark={false} compact />
+        <Text style={styles.title}>Dossier pêcheur</Text>
+        <Text style={styles.subtitle}>
+          Vérification automatique France (registre navires + PSP KYC).
+        </Text>
+        <Card style={styles.card}>
+          <Text style={styles.notice}>
+            Actions réservées aux pêcheurs.
+          </Text>
+        </Card>
+      </Screen>
+    );
+  }
+
   return (
     <Screen scroll>
       {onBack && <BackButton onPress={handleBack} style={styles.back} />}
       <Logo size={72} showWordmark={false} compact />
       <Text style={styles.title}>Dossier pêcheur</Text>
       <Text style={styles.subtitle}>
-        Renseignez vos informations légales pour être validé.
+        Vérification automatique France (registre navires + PSP KYC).
       </Text>
 
       <Card style={styles.card}>
-        <View style={styles.progressRow}>
-          <Text style={styles.progressLabel}>Dossier complet</Text>
-          <Text style={styles.progressValue}>{progress}%</Text>
-        </View>
-        <View style={styles.progressBar}>
-          <View style={[styles.progressFill, { width: `${progress}%` }]} />
-        </View>
+        <Text style={styles.sectionTitle}>Informations bateau</Text>
         <Field
           label="Nom et prénom"
           value={fisherProfile.name}
@@ -151,112 +256,150 @@ const OnboardingContent: React.FC<Props> = ({ onBack }) => {
           value={fisherProfile.idNumber}
           onChangeText={updateField('idNumber')}
         />
+      </Card>
 
-        <Text style={styles.sectionTitle}>Justificatifs</Text>
-        <View style={styles.docRow}>
-          <Pressable
-            style={styles.docButton}
-            onPress={() => pickDocument('licensePhotoUri')}
-          >
-            <Text style={styles.docButtonText}>
-              {fisherProfile.licensePhotoUri
-                ? 'Permis ajouté'
-                : 'Ajouter permis'}
-            </Text>
-          </Pressable>
-          <Pressable
-            style={styles.docButton}
-            onPress={() => pickDocument('boatPhotoUri')}
-          >
-            <Text style={styles.docButtonText}>
-              {fisherProfile.boatPhotoUri ? 'Bateau ajouté' : 'Ajouter bateau'}
-            </Text>
-          </Pressable>
-        </View>
-        <View style={styles.docRow}>
-          <Pressable
-            style={styles.docButton}
-            onPress={() => pickDocument('insurancePhotoUri')}
-          >
-            <Text style={styles.docButtonText}>
-              {fisherProfile.insurancePhotoUri
-                ? 'Assurance ajoutée'
-                : 'Ajouter assurance'}
-            </Text>
-          </Pressable>
-          <Pressable
-            style={styles.docButton}
-            onPress={() => pickDocument('ribPhotoUri')}
-          >
-            <Text style={styles.docButtonText}>
-              {fisherProfile.ribPhotoUri ? 'RIB ajouté' : 'Ajouter RIB'}
-            </Text>
-          </Pressable>
-        </View>
-        <View style={styles.docPreviewRow}>
-          {fisherProfile.licensePhotoUri && (
-            <Image
-              source={{ uri: fisherProfile.licensePhotoUri }}
-              style={styles.docPreview}
-            />
-          )}
-          {fisherProfile.boatPhotoUri && (
-            <Image
-              source={{ uri: fisherProfile.boatPhotoUri }}
-              style={styles.docPreview}
-            />
-          )}
-          {fisherProfile.insurancePhotoUri && (
-            <Image
-              source={{ uri: fisherProfile.insurancePhotoUri }}
-              style={styles.docPreview}
-            />
-          )}
-          {fisherProfile.ribPhotoUri && (
-            <Image
-              source={{ uri: fisherProfile.ribPhotoUri }}
-              style={styles.docPreview}
-            />
-          )}
-        </View>
-
-        {!isComplete && (
-          <Text style={styles.notice}>Complétez tous les champs pour soumettre.</Text>
-        )}
-
+      <Card style={styles.card}>
         <PrimaryButton
-          label={
-            fisherStatus === 'draft'
-              ? 'Soumettre le dossier'
-              : fisherStatus === 'pending'
-              ? 'Dossier envoyé'
-              : 'Validé'
-          }
-          onPress={() => {
-            registerPort(fisherProfile.port);
-            setFisherStatus('pending');
-          }}
-          disabled={!canSubmit}
+          label="Scanner documents (auto)"
+          onPress={() => setShowPicker(true)}
+          disabled={sending}
         />
+        <Text style={styles.notice}>
+          Choisissez un document, puis importez ou scannez.
+        </Text>
+      </Card>
+
+      <Card style={styles.card}>
+        <Text style={styles.sectionTitle}>Documents KYC</Text>
+        <View style={styles.docRow}>
+          <Text style={styles.meta}>Licence</Text>
+          <Tag
+            label={fisherProfile.licensePhotoUri ? 'Chargé' : 'Manquant'}
+            tone={fisherProfile.licensePhotoUri ? 'success' : 'warning'}
+          />
+        </View>
+        <View style={styles.docRow}>
+          <Text style={styles.meta}>Bateau</Text>
+          <Tag
+            label={fisherProfile.boatPhotoUri ? 'Chargé' : 'Manquant'}
+            tone={fisherProfile.boatPhotoUri ? 'success' : 'warning'}
+          />
+        </View>
+        <View style={styles.docRow}>
+          <Text style={styles.meta}>Assurance</Text>
+          <Tag
+            label={fisherProfile.insurancePhotoUri ? 'Chargé' : 'Manquant'}
+            tone={fisherProfile.insurancePhotoUri ? 'success' : 'warning'}
+          />
+        </View>
+        <View style={styles.docRow}>
+          <Text style={styles.meta}>RIB</Text>
+          <Tag
+            label={fisherProfile.ribPhotoUri ? 'Chargé' : 'Manquant'}
+            tone={fisherProfile.ribPhotoUri ? 'success' : 'warning'}
+          />
+        </View>
+        <View style={styles.actions}>
+          <PrimaryButton
+            label={sending ? 'Envoi en cours...' : 'Envoyer le dossier'}
+            onPress={handleSubmit}
+            disabled={sending}
+          />
+        </View>
       </Card>
 
       <View style={styles.statusRow}>
         <Text style={styles.statusLabel}>Statut :</Text>
-        {fisherStatus === 'draft' ? (
-          <Tag label="À compléter" tone="warning" />
-        ) : fisherStatus === 'pending' ? (
-          <Tag label="En attente" tone="warning" />
-        ) : (
-          <Tag label="Validé" tone="success" />
-        )}
+        <Tag label={status.label} tone={status.tone} />
       </View>
 
-      <GhostButton
-        label="Simuler validation admin"
-        onPress={() => setFisherStatus('approved')}
-      />
-      <View style={styles.spacer} />
+      {fisherStatus === 'rejected' && report.failureReason && (
+        <Text style={styles.notice}>Motif : {report.failureReason}</Text>
+      )}
+
+      <Card style={styles.card}>
+        <Text style={styles.sectionTitle}>Contrôles automatiques</Text>
+        {report.checks.map((check) => (
+          <View key={check.id} style={styles.checkRow}>
+            <View style={styles.checkText}>
+              <Text style={styles.meta}>{check.label}</Text>
+              {check.detail && <Text style={styles.caption}>{check.detail}</Text>}
+            </View>
+            <Tag label={checkLabel(check)} tone={checkTone(check)} />
+          </View>
+        ))}
+      </Card>
+
       <GhostButton label="Changer de compte" onPress={signOut} />
+
+      <Modal transparent visible={showPicker} animationType="fade">
+        <Pressable
+          style={styles.modalOverlay}
+          onPress={() => setShowPicker(false)}
+        >
+          <Pressable style={styles.modalCard} onPress={() => null}>
+            <Text style={styles.modalTitle}>Ajouter un document</Text>
+
+            <View style={styles.modalSection}>
+              <Text style={styles.modalLabel}>Licence</Text>
+              <View style={styles.modalActions}>
+                <GhostButton
+                  label="Importer"
+                  onPress={() => pickFromLibrary('licensePhotoUri')}
+                />
+                <GhostButton
+                  label="Scanner"
+                  onPress={() => takePhoto('licensePhotoUri')}
+                />
+              </View>
+            </View>
+
+            <View style={styles.modalSection}>
+              <Text style={styles.modalLabel}>Bateau</Text>
+              <View style={styles.modalActions}>
+                <GhostButton
+                  label="Importer"
+                  onPress={() => pickFromLibrary('boatPhotoUri')}
+                />
+                <GhostButton
+                  label="Scanner"
+                  onPress={() => takePhoto('boatPhotoUri')}
+                />
+              </View>
+            </View>
+
+            <View style={styles.modalSection}>
+              <Text style={styles.modalLabel}>Assurance</Text>
+              <View style={styles.modalActions}>
+                <GhostButton
+                  label="Importer"
+                  onPress={() => pickFromLibrary('insurancePhotoUri')}
+                />
+                <GhostButton
+                  label="Scanner"
+                  onPress={() => takePhoto('insurancePhotoUri')}
+                />
+              </View>
+            </View>
+
+            <View style={styles.modalSection}>
+              <Text style={styles.modalLabel}>RIB</Text>
+              <View style={styles.modalActions}>
+                <GhostButton
+                  label="Importer"
+                  onPress={() => pickFromLibrary('ribPhotoUri')}
+                />
+                <GhostButton
+                  label="Scanner"
+                  onPress={() => takePhoto('ribPhotoUri')}
+                />
+              </View>
+            </View>
+
+            <GhostButton label="Fermer" onPress={() => setShowPicker(false)} />
+          </Pressable>
+        </Pressable>
+      </Modal>
     </Screen>
   );
 };
@@ -272,92 +415,90 @@ export const OnboardingStandalone: React.FC<Props> = ({ onBack }) => {
 const styles = StyleSheet.create({
   back: {
     marginBottom: spacing.md,
-    marginTop: spacing.sm,
   },
   title: {
     ...textStyles.h2,
     marginBottom: spacing.xs,
   },
   subtitle: {
-    ...textStyles.body,
-    color: colors.muted,
+    ...textStyles.caption,
     marginBottom: spacing.lg,
   },
   card: {
     marginBottom: spacing.lg,
   },
-  progressRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: spacing.xs,
-  },
-  progressLabel: {
-    ...textStyles.caption,
-  },
-  progressValue: {
-    ...textStyles.bodyBold,
-  },
-  progressBar: {
-    height: 8,
-    borderRadius: 999,
-    backgroundColor: colors.border,
-    overflow: 'hidden',
-    marginBottom: spacing.md,
-  },
-  progressFill: {
-    height: '100%',
-    backgroundColor: colors.success,
-  },
   sectionTitle: {
     ...textStyles.h3,
     marginBottom: spacing.sm,
-    marginTop: spacing.sm,
-  },
-  docRow: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-    marginBottom: spacing.sm,
-  },
-  docButton: {
-    flex: 1,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.md,
-    paddingVertical: spacing.sm,
-    alignItems: 'center',
-    backgroundColor: 'transparent',
-  },
-  docButtonText: {
-    ...textStyles.bodyBold,
-    color: colors.primary,
-    fontSize: 13,
-  },
-  docPreviewRow: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-    marginBottom: spacing.md,
-  },
-  docPreview: {
-    width: 120,
-    height: 80,
-    borderRadius: radius.sm,
   },
   notice: {
     ...textStyles.caption,
     marginBottom: spacing.sm,
   },
+  docRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: spacing.xs,
+  },
   statusRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
-    marginBottom: spacing.md,
+    marginBottom: spacing.sm,
   },
   statusLabel: {
     ...textStyles.bodyBold,
     color: colors.muted,
     fontSize: 13,
   },
-  spacer: {
-    height: spacing.sm,
+  checkRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: spacing.sm,
+  },
+  checkText: {
+    flex: 1,
+    paddingRight: spacing.sm,
+  },
+  meta: {
+    ...textStyles.body,
+    fontSize: 13,
+  },
+  caption: {
+    ...textStyles.caption,
+    color: colors.muted,
+  },
+  actions: {
+    marginTop: spacing.sm,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(6, 10, 16, 0.4)',
+    justifyContent: 'center',
+    padding: spacing.lg,
+  },
+  modalCard: {
+    backgroundColor: colors.surface,
+    borderRadius: 18,
+    padding: spacing.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    gap: spacing.md,
+  },
+  modalTitle: {
+    ...textStyles.h3,
+  },
+  modalSection: {
+    gap: spacing.xs,
+  },
+  modalLabel: {
+    ...textStyles.bodyBold,
+  },
+  modalActions: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    flexWrap: 'wrap',
   },
 });

@@ -60,7 +60,7 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: 'rgba(11, 61, 104, 0.35)',
     shadowColor: colors.primaryDark,
     shadowOpacity: 0.18,
     shadowRadius: 16,
@@ -72,7 +72,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     borderRadius: 999,
     alignItems: 'center',
-    backgroundColor: 'transparent',
+    backgroundColor: 'rgba(11, 61, 104, 0.12)',
   },
   pressed: {
     opacity: 0.92,
@@ -88,19 +88,19 @@ const styles = StyleSheet.create({
   },
   ghost: {
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: 'rgba(11, 61, 104, 0.3)',
     paddingVertical: spacing.sm,
     paddingHorizontal: spacing.md,
     borderRadius: radius.md,
     alignItems: 'center',
-    backgroundColor: 'transparent',
+    backgroundColor: 'rgba(11, 61, 104, 0.08)',
   },
   ghostPressed: {
     opacity: 0.85,
   },
   ghostLabel: {
     ...textStyles.bodyBold,
-    color: colors.primary,
+    color: colors.primaryDark,
     fontSize: 13,
   },
 });

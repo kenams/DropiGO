@@ -11,7 +11,7 @@ export const Card: React.FC<{ children: React.ReactNode; style?: ViewStyle }> = 
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: 'transparent',
+    backgroundColor: colors.surface,
     borderRadius: radius.lg,
     padding: spacing.lg,
     borderWidth: 1,

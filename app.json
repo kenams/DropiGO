@@ -1,7 +1,7 @@
 ﻿{
   "expo": {
     "name": "DroPiPêche",
-    "slug": "dropipeche",
+    "slug": "DropiGO",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -10,7 +10,7 @@
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
+      "backgroundColor": "#F4F8FB"
     },
     "ios": {
       "supportsTablet": true,
@@ -20,14 +20,15 @@
         "NSPhotoLibraryUsageDescription": "DroPiPêche a besoin d'acceder a vos photos pour publier une peche.",
         "NSPhotoLibraryAddUsageDescription": "DroPiPêche peut enregistrer des photos dans votre galerie.",
         "NSLocationWhenInUseUsageDescription": "DroPiPêche utilise votre position pour proposer un point de rendez-vous.",
-        "NSLocationAlwaysAndWhenInUseUsageDescription": "DroPiPêche utilise votre position pour proposer un point de rendez-vous."
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "DroPiPêche utilise votre position pour proposer un point de rendez-vous.",
+        "LSApplicationQueriesSchemes": ["waze"]
       }
     },
     "android": {
       "package": "com.dropigo.app",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
+        "backgroundColor": "#F4F8FB"
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,

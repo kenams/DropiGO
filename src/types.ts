@@ -1,4 +1,4 @@
-export type Role = 'fisher' | 'buyer';
+export type Role = 'fisher' | 'buyer' | 'admin';
 
 export type AuthUser = {
   id: string;
@@ -11,9 +11,43 @@ export type AuthUser = {
   createdAt: string;
 };
 
-export type FisherStatus = 'draft' | 'pending' | 'approved';
+export type FisherStatus = 'draft' | 'pending' | 'verified' | 'rejected';
 
-export type BuyerStatus = 'draft' | 'pending' | 'approved';
+export type BuyerStatus = 'draft' | 'pending' | 'verified' | 'rejected';
+
+export type VerificationStatus = 'pending' | 'verified' | 'rejected';
+
+export type VerificationRiskLevel = 'low' | 'medium' | 'high';
+
+export type VerificationCheck = {
+  id: string;
+  label: string;
+  status: 'pending' | 'passed' | 'failed';
+  detail?: string;
+};
+
+export type VerificationReport = {
+  id: string;
+  role: Role;
+  provider: string;
+  status: VerificationStatus;
+  checks: VerificationCheck[];
+  riskScore: number;
+  riskLevel: VerificationRiskLevel;
+  failureReason?: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type VerificationHistoryItem = {
+  id: string;
+  role: Role;
+  subject: string;
+  provider: string;
+  status: VerificationStatus;
+  riskScore: number;
+  createdAt: string;
+};
 
 export type ListingStatus = 'active' | 'reserved_out' | 'closed';
 
@@ -112,9 +146,11 @@ export type BuyerProfile = {
   paymentMethod: string;
   idNumber: string;
   address: string;
+  idPhotoUri?: string;
+  kbisPhotoUri?: string;
 };
 
-export type FisherApplicantStatus = 'pending' | 'approved' | 'rejected';
+export type FisherApplicantStatus = 'pending' | 'verified' | 'rejected';
 
 export type FisherApplicant = FisherProfile & {
   id: string;
@@ -122,7 +158,7 @@ export type FisherApplicant = FisherProfile & {
   submittedAt: string;
 };
 
-export type BuyerApplicantStatus = 'pending' | 'approved' | 'rejected';
+export type BuyerApplicantStatus = 'pending' | 'verified' | 'rejected';
 
 export type BuyerApplicant = BuyerProfile & {
   id: string;

@@ -14,7 +14,8 @@ import { colors, radius, spacing, textStyles } from '../../theme';
 type Props = { onBack?: () => void };
 
 const CreateListingContent: React.FC<Props> = ({ onBack }) => {
-  const { addListing, knownPorts, registerPort } = useAppState();
+  const { addListing, knownPorts, registerPort, role } = useAppState();
+  const canFisher = role === 'fisher' || role === 'admin';
   const [title, setTitle] = useState('');
   const [variety, setVariety] = useState('');
   const [pricePerKg, setPricePerKg] = useState('');
@@ -133,6 +134,23 @@ const CreateListingContent: React.FC<Props> = ({ onBack }) => {
         : [...prev, value]
     );
   };
+
+  if (!canFisher) {
+    return (
+      <Screen scroll>
+        {onBack && <BackButton onPress={onBack} style={styles.back} />}
+        <Text style={styles.title}>Nouvelle pêche</Text>
+        <Text style={styles.subtitle}>
+          Publiez votre pêche du jour pour recevoir des réservations.
+        </Text>
+        <View style={styles.noticeCard}>
+          <Text style={styles.noticeText}>
+            Actions réservées aux pêcheurs.
+          </Text>
+        </View>
+      </Screen>
+    );
+  }
 
   return (
     <Screen scroll>
@@ -283,6 +301,18 @@ const styles = StyleSheet.create({
   notice: {
     ...textStyles.caption,
     marginBottom: spacing.sm,
+  },
+  noticeCard: {
+    marginBottom: spacing.lg,
+    padding: spacing.md,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: 'transparent',
+  },
+  noticeText: {
+    ...textStyles.caption,
+    color: colors.muted,
   },
   sectionTitle: {
     ...textStyles.h3,

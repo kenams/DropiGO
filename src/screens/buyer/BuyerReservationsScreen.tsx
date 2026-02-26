@@ -24,7 +24,9 @@ const BuyerReservationsContent: React.FC<Props> = ({ onBack, onOpenTracking }) =
     requestBuyerArrival,
     declareDelay,
     cancelAfterArrival,
+    role,
   } = useAppState();
+  const canBuyer = role === 'buyer' || role === 'admin';
 
   const handleExport = async (reservationId: string) => {
     const reservation = reservations.find((item) => item.id === reservationId);
@@ -159,33 +161,42 @@ const BuyerReservationsContent: React.FC<Props> = ({ onBack, onOpenTracking }) =
               {item.status === 'confirmed' && (
                 <View style={styles.arrivalBox}>
                   <Text style={styles.sectionTitle}>Arrivée au point de RDV</Text>
-                  {!item.buyerArrivalRequestedAt && (
-                    <PrimaryButton
-                      label="Je suis arrivé au point de RDV"
-                      onPress={() => requestBuyerArrival(item.id)}
-                    />
-                  )}
-                  {item.buyerArrivalRequestedAt && !item.buyerArrivalConfirmedAt && (
-                    <Text style={styles.pendingText}>
-                      Arrivée signalée. En attente de confirmation du pêcheur.
+                  {canBuyer ? (
+                    <>
+                      {!item.buyerArrivalRequestedAt && (
+                        <PrimaryButton
+                          label="Je suis arrivé au point de RDV"
+                          onPress={() => requestBuyerArrival(item.id)}
+                        />
+                      )}
+                      {item.buyerArrivalRequestedAt &&
+                        !item.buyerArrivalConfirmedAt && (
+                          <Text style={styles.pendingText}>
+                            Arrivée signalée. En attente de confirmation du pêcheur.
+                          </Text>
+                        )}
+                      {item.buyerArrivalConfirmedAt && (
+                        <Text style={styles.confirmText}>
+                          Arrivée confirmée par le pêcheur.
+                        </Text>
+                      )}
+                      {item.buyerArrivalConfirmedAt && !item.compensation && (
+                        <View style={styles.incidentActions}>
+                          <GhostButton
+                            label="Signaler retard du pêcheur"
+                            onPress={() => declareDelay(item.id, 'fisher')}
+                          />
+                          <GhostButton
+                            label="Pêcheur a annulé"
+                            onPress={() => cancelAfterArrival(item.id, 'fisher')}
+                          />
+                        </View>
+                      )}
+                    </>
+                  ) : (
+                    <Text style={styles.noticeText}>
+                      Actions réservées aux acheteurs.
                     </Text>
-                  )}
-                  {item.buyerArrivalConfirmedAt && (
-                    <Text style={styles.confirmText}>
-                      Arrivée confirmée par le pêcheur.
-                    </Text>
-                  )}
-                  {item.buyerArrivalConfirmedAt && !item.compensation && (
-                    <View style={styles.incidentActions}>
-                      <GhostButton
-                        label="Signaler retard du pêcheur"
-                        onPress={() => declareDelay(item.id, 'fisher')}
-                      />
-                      <GhostButton
-                        label="Pêcheur a annulé"
-                        onPress={() => cancelAfterArrival(item.id, 'fisher')}
-                      />
-                    </View>
                   )}
                   <Text style={styles.policyText}>
                     Barème : {ratePercent}% du total, min {compensationPolicy.min} €, max{' '}
@@ -195,13 +206,13 @@ const BuyerReservationsContent: React.FC<Props> = ({ onBack, onOpenTracking }) =
               )}
 
               <View style={styles.actions}>
-                {onOpenTracking && (
+                {onOpenTracking && canBuyer && (
                   <GhostButton
                     label="Suivre la commande"
                     onPress={() => onOpenTracking(item.id)}
                   />
                 )}
-                {item.status !== 'rejected' && (
+                {item.status !== 'rejected' && canBuyer && (
                   <GhostButton
                     label="Télécharger le bon de retrait (PDF)"
                     onPress={() => handleExport(item.id)}
@@ -302,6 +313,11 @@ const styles = StyleSheet.create({
   policyText: {
     ...textStyles.caption,
     color: colors.muted,
+  },
+  noticeText: {
+    ...textStyles.caption,
+    color: colors.muted,
+    marginBottom: spacing.sm,
   },
 });
 

@@ -45,10 +45,10 @@ const styles = StyleSheet.create({
     marginBottom: spacing.xs,
   },
   input: {
-    backgroundColor: colors.surfaceWarm,
+    backgroundColor: colors.surface,
     borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: colors.border,
+    borderWidth: 1.5,
+    borderColor: 'rgba(11, 61, 104, 0.4)',
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
     fontSize: 16,

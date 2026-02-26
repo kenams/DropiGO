@@ -19,7 +19,9 @@ export const OrderTrackingScreen: React.FC<Props> = ({ reservationId, onBack }) 
     listings,
     setBuyerConformity,
     releaseEscrow,
+    role,
   } = useAppState();
+  const canBuyer = role === 'buyer' || role === 'admin';
   const [note, setNote] = useState('');
 
   const reservation = useMemo(
@@ -97,24 +99,32 @@ export const OrderTrackingScreen: React.FC<Props> = ({ reservationId, onBack }) 
 
       <Card style={styles.card}>
         <Text style={styles.sectionTitle}>Validation marchandise</Text>
-        <Text style={styles.meta}>Choisissez après contrôle au quai.</Text>
-        <View style={styles.actions}>
-          <PrimaryButton
-            label="Marchandise conforme"
-            onPress={() => setBuyerConformity(reservation.id, 'conform')}
-          />
-          <TextInput
-            value={note}
-            onChangeText={setNote}
-            placeholder="Motif de non-conformité"
-            placeholderTextColor={colors.muted}
-            style={styles.noteInput}
-          />
-          <GhostButton
-            label="Signaler non-conformité"
-            onPress={() => setBuyerConformity(reservation.id, 'non_conform', note)}
-          />
-        </View>
+        {canBuyer ? (
+          <>
+            <Text style={styles.meta}>Choisissez après contrôle au quai.</Text>
+            <View style={styles.actions}>
+              <PrimaryButton
+                label="Marchandise conforme"
+                onPress={() => setBuyerConformity(reservation.id, 'conform')}
+              />
+              <TextInput
+                value={note}
+                onChangeText={setNote}
+                placeholder="Motif de non-conformité"
+                placeholderTextColor={colors.muted}
+                style={styles.noteInput}
+              />
+              <GhostButton
+                label="Signaler non-conformité"
+                onPress={() => setBuyerConformity(reservation.id, 'non_conform', note)}
+              />
+            </View>
+          </>
+        ) : (
+          <Text style={styles.noticeText}>
+            Actions réservées aux acheteurs.
+          </Text>
+        )}
       </Card>
 
       {reservation.buyerConformity === 'non_conform' && (
@@ -128,7 +138,7 @@ export const OrderTrackingScreen: React.FC<Props> = ({ reservationId, onBack }) 
             En attente de la confirmation de remise par le pêcheur.
           </Text>
         )}
-      {canRelease && (
+      {canRelease && canBuyer && (
         <PrimaryButton
           label="Débloquer le paiement"
           onPress={() => releaseEscrow(reservation.id)}
@@ -187,6 +197,11 @@ const styles = StyleSheet.create({
   warningText: {
     ...textStyles.caption,
     color: colors.danger,
+    marginBottom: spacing.sm,
+  },
+  noticeText: {
+    ...textStyles.caption,
+    color: colors.muted,
     marginBottom: spacing.sm,
   },
 });

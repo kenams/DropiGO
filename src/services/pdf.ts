@@ -13,7 +13,7 @@ export type ReceiptData = {
 };
 
 export const exportPickupReceipt = async (data: ReceiptData) => {
-  const qrText = `DroPiPêche|${data.checkoutId ?? 'N/A'}|${data.listingTitle}|${data.qtyKg}|${data.pickupTime}|${data.buyerName}|${data.fisherName}`;
+  const qrText = `DroPiPêche|${data.checkoutId  ?? 'N/A'}|${data.listingTitle}|${data.qtyKg}|${data.pickupTime}|${data.buyerName}|${data.fisherName}`;
   const qrDataUrl = await QRCode.toDataURL(qrText, { margin: 1, width: 180 });
 
   const html = `
@@ -37,7 +37,7 @@ export const exportPickupReceipt = async (data: ReceiptData) => {
         <h1>Bon de retrait DroPiPêche</h1>
         <div class="meta">Généré le ${new Date().toLocaleString('fr-FR')}</div>
         <div class="card">
-          <div class="row"><span class="label">Référence</span><span class="value">${data.checkoutId ?? '—'}</span></div>
+          <div class="row"><span class="label">Référence</span><span class="value">${data.checkoutId  ?? '—'}</span></div>
           <div class="row"><span class="label">Produit</span><span class="value">${data.listingTitle}</span></div>
           <div class="row"><span class="label">Quantité</span><span class="value">${data.qtyKg} kg</span></div>
           <div class="row"><span class="label">Retrait</span><span class="value">${data.pickupTime}</span></div>

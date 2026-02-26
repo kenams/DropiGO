@@ -15,7 +15,8 @@ type OpenListing = (listingId: string) => void;
 const FavoritesContent: React.FC<{ onOpenListing: OpenListing }> = ({
   onOpenListing,
 }) => {
-  const { listings, favorites, toggleFavorite } = useAppState();
+  const { listings, favorites, toggleFavorite, role } = useAppState();
+  const canBuyer = role === 'buyer' || role === 'admin';
 
   const favoriteListings = useMemo(() => {
     return listings
@@ -29,6 +30,11 @@ const FavoritesContent: React.FC<{ onOpenListing: OpenListing }> = ({
   return (
     <Screen style={styles.container}>
       <Text style={styles.title}>Mes favoris</Text>
+      {!canBuyer && (
+        <Text style={styles.noticeText}>
+          Fonction réservée aux acheteurs.
+        </Text>
+      )}
       <FlatList
         data={favoriteListings}
         keyExtractor={(item) => item.id}
@@ -44,12 +50,14 @@ const FavoritesContent: React.FC<{ onOpenListing: OpenListing }> = ({
             <View style={styles.rowBetween}>
               <Text style={styles.cardTitle}>{item.title}</Text>
               <View style={styles.rowEnd}>
-                <Pressable
-                  onPress={() => toggleFavorite(item.id)}
-                  style={styles.favoriteButton}
-                >
-                  <Ionicons name="heart" size={18} color={colors.danger} />
-                </Pressable>
+                {canBuyer && (
+                  <Pressable
+                    onPress={() => toggleFavorite(item.id)}
+                    style={styles.favoriteButton}
+                  >
+                    <Ionicons name="heart" size={18} color={colors.danger} />
+                  </Pressable>
+                )}
                 <Tag label={item.status === 'active' ? 'Disponible' : 'Clôturé'} />
               </View>
             </View>
@@ -63,12 +71,18 @@ const FavoritesContent: React.FC<{ onOpenListing: OpenListing }> = ({
             </View>
             <Text style={styles.cardMuted}>{item.location}</Text>
             <Text style={styles.cardMuted}>{item.pickupWindow}</Text>
-            <Pressable
-              onPress={() => onOpenListing(item.id)}
-              style={styles.detailButton}
-            >
-              <Text style={styles.detailButtonText}>Voir le détail</Text>
-            </Pressable>
+            {canBuyer ? (
+              <Pressable
+                onPress={() => onOpenListing(item.id)}
+                style={styles.detailButton}
+              >
+                <Text style={styles.detailButtonText}>Voir le détail</Text>
+              </Pressable>
+            ) : (
+              <Text style={styles.noticeText}>
+                Accès restreint à la réservation.
+              </Text>
+            )}
           </Card>
         )}
       />
@@ -168,6 +182,11 @@ const styles = StyleSheet.create({
   detailButtonText: {
     ...textStyles.bodyBold,
     color: colors.primary,
+  },
+  noticeText: {
+    ...textStyles.caption,
+    color: colors.muted,
+    marginBottom: spacing.sm,
   },
 });
 

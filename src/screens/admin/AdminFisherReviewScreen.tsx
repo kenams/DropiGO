@@ -1,25 +1,30 @@
 ﻿import React from 'react';
 import { FlatList, StyleSheet, Text, View } from 'react-native';
-import { GhostButton, PrimaryButton } from '../../components/Buttons';
 import { Card } from '../../components/Card';
 import { Screen } from '../../components/Screen';
 import { Tag } from '../../components/Tag';
 import { useAppState } from '../../state/AppState';
-import { spacing, textStyles } from '../../theme';
+import { colors, spacing, textStyles } from '../../theme';
 import { FisherApplicantStatus } from '../../types';
 
 const statusLabel: Record<FisherApplicantStatus, string> = {
   pending: 'En attente',
-  approved: 'Validé',
+  verified: 'Vérifié',
   rejected: 'Refusé',
 };
 
 export const AdminFisherReviewScreen: React.FC = () => {
-  const { fisherApplicants, updateFisherApplicantStatus } = useAppState();
+  const { fisherApplicants, role } = useAppState();
+  const canAdmin = role === 'admin';
 
   return (
     <Screen style={styles.container}>
       <Text style={styles.title}>Validation pêcheurs</Text>
+      {!canAdmin && (
+        <Text style={styles.noticeText}>
+          Accès réservé aux administrateurs.
+        </Text>
+      )}
       <FlatList
         data={fisherApplicants}
         keyExtractor={(item) => item.id}
@@ -31,7 +36,7 @@ export const AdminFisherReviewScreen: React.FC = () => {
               <Tag
                 label={statusLabel[item.status]}
                 tone={
-                  item.status === 'approved'
+                  item.status === 'verified'
                     ? 'success'
                     : item.status === 'rejected'
                     ? 'danger'
@@ -49,18 +54,9 @@ export const AdminFisherReviewScreen: React.FC = () => {
             <Text style={styles.meta}>Email : {item.email}</Text>
             <Text style={styles.meta}>Pièce ID : {item.idNumber}</Text>
 
-            <View style={styles.actions}>
-              <PrimaryButton
-                label="Valider"
-                onPress={() => updateFisherApplicantStatus(item.id, 'approved')}
-                disabled={item.status === 'approved'}
-                style={styles.actionButton}
-              />
-              <GhostButton
-                label="Refuser"
-                onPress={() => updateFisherApplicantStatus(item.id, 'rejected')}
-              />
-            </View>
+            <Text style={styles.note}>
+              Vérification automatique : aucune validation manuelle requise.
+            </Text>
           </Card>
         )}
       />
@@ -96,12 +92,15 @@ const styles = StyleSheet.create({
     ...textStyles.caption,
     marginBottom: spacing.xs,
   },
-  actions: {
+  note: {
+    ...textStyles.caption,
+    color: colors.muted,
     marginTop: spacing.sm,
-    gap: spacing.sm,
   },
-  actionButton: {
-    width: '100%',
+  noticeText: {
+    ...textStyles.caption,
+    color: colors.muted,
+    marginBottom: spacing.sm,
   },
 });
 

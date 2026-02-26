@@ -1,8 +1,8 @@
 ﻿import React from 'react';
-import { Image, StyleSheet, Text, View } from 'react-native';
-import { colors, spacing, textStyles } from '../theme';
+import { Image, StyleSheet, View } from 'react-native';
+import { spacing } from '../theme';
 
-const logoSource = require('../../assets/icon.png');
+const logoSource = require('../../assets/logo-official.png');
 
 export const Logo: React.FC<{
   size?: number;
@@ -40,7 +40,7 @@ const styles = StyleSheet.create({
   },
   logoInner: {
     flex: 1,
-    padding: spacing.xs,
+    padding: 0,
   },
   logoImage: {
     width: '100%',

@@ -1,19 +1,20 @@
 ﻿import React, { useMemo, useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BuyerHomeStandalone } from '../screens/buyer/BuyerHomeScreen';
 import { ListingDetailStandalone } from '../screens/buyer/ListingDetailScreen';
 import { BuyerReservationsStandalone } from '../screens/buyer/BuyerReservationsScreen';
 import { CartStandalone } from '../screens/buyer/CartScreen';
 import { OrderTrackingScreen } from '../screens/buyer/OrderTrackingScreen';
-import { BuyerOnboardingStandalone } from '../screens/buyer/BuyerOnboardingScreen';
 import { ProfileStandalone } from '../screens/ProfileScreen';
 import { AuthScreen } from '../screens/auth/AuthScreen';
 import { CreateListingStandalone } from '../screens/fisher/CreateListingScreen';
 import { FisherHomeScreen } from '../screens/fisher/FisherHomeScreen';
 import { FisherReservationsStandalone } from '../screens/fisher/FisherReservationsScreen';
-import { OnboardingStandalone } from '../screens/fisher/OnboardingScreen';
 import { WelcomeScreen } from '../screens/WelcomeScreen';
+import { AdminDashboardScreen } from '../screens/admin/AdminDashboardScreen';
+import { BackButton } from '../components/BackButton';
 import { useAppState } from '../state/AppState';
 import { colors, spacing, textStyles } from '../theme';
 
@@ -41,8 +42,33 @@ const fisherTabs: TabConfig<FisherTabKey>[] = [
   { key: 'Profile', label: 'Profil', icon: 'person' },
 ];
 
+const AdminPortal: React.FC<{ onSignOut: () => void }> = ({ onSignOut }) => {
+  const [mode, setMode] = useState<'admin' | 'buyer' | 'fisher'>('admin');
+
+  if (mode === 'admin') {
+    return (
+      <AdminDashboardScreen
+        onBack={onSignOut}
+        onOpenBuyer={() => setMode('buyer')}
+        onOpenFisher={() => setMode('fisher')}
+      />
+    );
+  }
+
+  return (
+    <View style={styles.adminRoot}>
+      {mode === 'buyer' ? <BuyerTabs /> : <FisherTabs />}
+      <BackButton
+        label="Admin"
+        onPress={() => setMode('admin')}
+        style={styles.adminBack}
+      />
+    </View>
+  );
+};
+
 export const ExpoGoNavigator: React.FC = () => {
-  const { currentUser, role, fisherStatus, buyerStatus } = useAppState();
+  const { currentUser, role, signOut } = useAppState();
   const effectiveRole = currentUser?.role ?? role;
   const [showWelcome, setShowWelcome] = useState(true);
 
@@ -54,16 +80,12 @@ export const ExpoGoNavigator: React.FC = () => {
     return <AuthScreen />;
   }
 
-  if (effectiveRole === 'fisher' && fisherStatus !== 'approved') {
-    return <OnboardingStandalone onBack={() => setShowWelcome(true)} />;
-  }
-
-  if (effectiveRole === 'buyer' && buyerStatus !== 'approved') {
-    return <BuyerOnboardingStandalone onBack={() => setShowWelcome(true)} />;
-  }
-
   if (effectiveRole === 'buyer') {
     return <BuyerTabs />;
+  }
+
+  if (effectiveRole === 'admin') {
+    return <AdminPortal onSignOut={signOut} />;
   }
 
   return <FisherTabs />;
@@ -75,6 +97,7 @@ const BuyerTabs: React.FC = () => {
   const [activeTab, setActiveTab] = useState<BuyerTabKey>('Feed');
   const [selectedListingId, setSelectedListingId] = useState<string | null>(null);
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
+  const insets = useSafeAreaInsets();
   const content = useMemo(() => {
     if (selectedListingId) {
       return (
@@ -112,11 +135,24 @@ const BuyerTabs: React.FC = () => {
 
   return (
     <View style={styles.root}>
-      <View style={[styles.content, !(selectedListingId || selectedOrderId) && styles.contentWithTabs]}>
+      <View
+        style={[
+          styles.content,
+          !(selectedListingId || selectedOrderId) && styles.contentWithTabs,
+          !(selectedListingId || selectedOrderId) && {
+            paddingBottom: TAB_BAR_HEIGHT + insets.bottom,
+          },
+        ]}
+      >
         {content}
       </View>
       {!(selectedListingId || selectedOrderId) && (
-        <TabBar tabs={buyerTabs} activeTab={activeTab} onSelect={setActiveTab} />
+        <TabBar
+          tabs={buyerTabs}
+          activeTab={activeTab}
+          onSelect={setActiveTab}
+          bottomInset={insets.bottom}
+        />
       )}
     </View>
   );
@@ -124,6 +160,7 @@ const BuyerTabs: React.FC = () => {
 
 const FisherTabs: React.FC = () => {
   const [activeTab, setActiveTab] = useState<FisherTabKey>('Home');
+  const insets = useSafeAreaInsets();
   const content = useMemo(() => {
     if (activeTab === 'Home') {
       return <FisherHomeScreen />;
@@ -139,8 +176,21 @@ const FisherTabs: React.FC = () => {
 
   return (
     <View style={styles.root}>
-      <View style={[styles.content, styles.contentWithTabs]}>{content}</View>
-      <TabBar tabs={fisherTabs} activeTab={activeTab} onSelect={setActiveTab} />
+      <View
+        style={[
+          styles.content,
+          styles.contentWithTabs,
+          { paddingBottom: TAB_BAR_HEIGHT + insets.bottom },
+        ]}
+      >
+        {content}
+      </View>
+      <TabBar
+        tabs={fisherTabs}
+        activeTab={activeTab}
+        onSelect={setActiveTab}
+        bottomInset={insets.bottom}
+      />
     </View>
   );
 };
@@ -149,13 +199,20 @@ const TabBar = <Key extends string>({
   tabs,
   activeTab,
   onSelect,
+  bottomInset,
 }: {
   tabs: TabConfig<Key>[];
   activeTab: Key;
   onSelect: (tab: Key) => void;
+  bottomInset: number;
 }) => {
   return (
-    <View style={styles.tabBar}>
+    <View
+      style={[
+        styles.tabBar,
+        { paddingBottom: spacing.sm + bottomInset, height: TAB_BAR_HEIGHT + bottomInset },
+      ]}
+    >
       {tabs.map((tab) => {
         const isActive = activeTab === tab.key;
         return (
@@ -199,7 +256,6 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: colors.border,
     backgroundColor: colors.surface,
-    height: TAB_BAR_HEIGHT,
     shadowColor: colors.primaryDark,
     shadowOpacity: 0.08,
     shadowRadius: 12,
@@ -218,5 +274,14 @@ const styles = StyleSheet.create({
   tabLabelActive: {
     color: colors.primaryDark,
     fontFamily: textStyles.bodyBold.fontFamily,
+  },
+  adminRoot: {
+    flex: 1,
+  },
+  adminBack: {
+    position: 'absolute',
+    top: 16,
+    right: 16,
+    zIndex: 20,
   },
 });

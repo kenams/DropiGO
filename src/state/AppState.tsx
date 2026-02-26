@@ -12,9 +12,26 @@ import {
 import { knownPorts } from '../data/ports';
 import { buildCompensation } from '../services/compensation';
 import {
+  uploadBuyerDocuments,
+  uploadFisherDocuments,
+} from '../services/kycStorage';
+import {
   configureNotifications,
   sendLocalNotification,
 } from '../services/notifications';
+import { isSupabaseConfigured } from '../services/supabase';
+import { upsertBuyerProfile, upsertFisherProfile } from '../services/supabaseKyc';
+import {
+  canUseRemoteVerification,
+  verifyBuyerRemote,
+  verifyFisherRemote,
+} from '../services/verificationApi';
+import {
+  finalizeBuyerVerification,
+  finalizeFisherVerification,
+  startBuyerVerification,
+  startFisherVerification,
+} from '../services/verification';
 import {
   AppNotification,
   AuthUser,
@@ -36,6 +53,8 @@ import {
   ReservationStatus,
   Role,
   SyncHistoryItem,
+  VerificationHistoryItem,
+  VerificationReport,
 } from '../types';
 
 type NetInfoModule = typeof import('@react-native-community/netinfo');
@@ -72,6 +91,14 @@ const demoUsers: AuthUser[] = [
     company: 'Restaurant La Vague',
     createdAt: new Date(Date.now() - 1000 * 60 * 60 * 12).toISOString(),
   },
+  {
+    id: 'u-3',
+    email: 'admin@dropipeche.demo',
+    password: 'admin123',
+    role: 'admin',
+    name: 'Admin DroPiPêche',
+    createdAt: new Date(Date.now() - 1000 * 60 * 60 * 2).toISOString(),
+  },
 ];
 
 const defaultFisherProfile: FisherProfile = {
@@ -101,6 +128,8 @@ const defaultBuyerProfile: BuyerProfile = {
   paymentMethod: '',
   idNumber: '',
   address: '',
+  idPhotoUri: undefined,
+  kbisPhotoUri: undefined,
 };
 
 const normalizePortName = (value: string) =>
@@ -139,6 +168,11 @@ type AppState = {
   setBuyerStatus: (status: BuyerStatus) => void;
   buyerProfile: BuyerProfile;
   setBuyerProfile: (profile: BuyerProfile) => void;
+  buyerVerification: VerificationReport | null;
+  fisherVerification: VerificationReport | null;
+  verificationHistory: VerificationHistoryItem[];
+  submitBuyerVerification: (profile: BuyerProfile) => Promise<void>;
+  submitFisherVerification: (profile: FisherProfile) => Promise<void>;
   knownPorts: string[];
   registerPort: (port: string) => void;
   listings: Listing[];
@@ -226,6 +260,13 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({
   const [buyerProfile, setBuyerProfile] = useState<BuyerProfile>({
     ...defaultBuyerProfile,
   });
+  const [buyerVerification, setBuyerVerification] =
+    useState<VerificationReport | null>(null);
+  const [fisherVerification, setFisherVerification] =
+    useState<VerificationReport | null>(null);
+  const [verificationHistory, setVerificationHistory] = useState<
+    VerificationHistoryItem[]
+  >([]);
   const [knownPortsState, setKnownPortsState] = useState<string[]>(knownPorts);
   const [listings, setListings] = useState<Listing[]>(initialListings);
   const [reservations, setReservations] = useState<Reservation[]>(
@@ -259,6 +300,28 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({
     sendLocalNotification(title, body).catch(() => undefined);
   };
 
+  const hasRole = (allowed: Role[], _allowAdmin = false) => {
+    if (!role) {
+      return false;
+    }
+    if (role === 'admin') {
+      return true;
+    }
+    return allowed.includes(role);
+  };
+
+  const requireRole = (
+    allowed: Role[],
+    message: string,
+    allowAdmin = false
+  ) => {
+    if (hasRole(allowed, allowAdmin)) {
+      return true;
+    }
+    pushNotification('Accès restreint', message);
+    return false;
+  };
+
   const currentUser = useMemo(
     () => users.find((user) => user.id === currentUserId) ?? null,
     [users, currentUserId]
@@ -280,23 +343,63 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({
     if (user.password !== password) {
       return { ok: false, message: 'Mot de passe incorrect.' };
     }
+
+    const isDemo = user.email.endsWith('@dropipeche.demo');
     setCurrentUserId(user.id);
     setRole(user.role);
+
     if (user.role === 'buyer') {
-      setBuyerProfile((prev) => ({
-        ...prev,
-        name: prev.name || user.name,
-        company: prev.company || user.company || user.name,
-        email: prev.email || user.email,
-        phone: prev.phone || user.phone || '',
-      }));
+      const nextProfile: BuyerProfile = {
+        ...defaultBuyerProfile,
+        name: user.name,
+        company: user.company || user.name,
+        email: user.email,
+        phone: user.phone || '',
+        registry: isDemo ? '55210055400013' : defaultBuyerProfile.registry,
+        activity: isDemo ? 'Restaurant' : defaultBuyerProfile.activity,
+        paymentMethod: isDemo ? 'Carte professionnelle' : defaultBuyerProfile.paymentMethod,
+        idNumber: isDemo ? 'ID-FR-932193' : defaultBuyerProfile.idNumber,
+        address: isDemo ? 'Quai des Pêcheurs, Sète' : defaultBuyerProfile.address,
+      };
+      setBuyerProfile(nextProfile);
+      const report = isDemo
+        ? finalizeBuyerVerification(nextProfile, true)
+        : startBuyerVerification();
+      setBuyerVerification(report);
+      setBuyerStatus(isDemo ? report.status : 'draft');
+      setFisherStatus('draft');
+      setFisherVerification(null);
+      setFisherProfile({ ...defaultFisherProfile });
+    } else if (user.role === 'fisher') {
+      const nextProfile: FisherProfile = {
+        ...defaultFisherProfile,
+        name: user.name,
+        email: user.email,
+        phone: user.phone || '',
+        permit: isDemo ? 'FR-PECH-9821' : defaultFisherProfile.permit,
+        boat: isDemo ? 'L’Étoile Marine' : defaultFisherProfile.boat,
+        registration: isDemo ? 'SE-4592' : defaultFisherProfile.registration,
+        port: isDemo ? 'Port de Sète' : defaultFisherProfile.port,
+        insurance: isDemo ? 'Assurance Maritime AXA' : defaultFisherProfile.insurance,
+        bankAccount: isDemo ? 'FR76 3000 6000 0112 3456 7890 189' : defaultFisherProfile.bankAccount,
+        idNumber: isDemo ? 'ID-FR-125971' : defaultFisherProfile.idNumber,
+      };
+      setFisherProfile(nextProfile);
+      const report = isDemo
+        ? finalizeFisherVerification(nextProfile, true)
+        : startFisherVerification();
+      setFisherVerification(report);
+      setFisherStatus(isDemo ? report.status : 'draft');
+      setBuyerStatus('draft');
+      setBuyerVerification(null);
+      setBuyerProfile({ ...defaultBuyerProfile });
     } else {
-      setFisherProfile((prev) => ({
-        ...prev,
-        name: prev.name || user.name,
-        email: prev.email || user.email,
-        phone: prev.phone || user.phone || '',
-      }));
+      setBuyerStatus('draft');
+      setFisherStatus('draft');
+      setBuyerVerification(null);
+      setFisherVerification(null);
+      setBuyerProfile({ ...defaultBuyerProfile });
+      setFisherProfile({ ...defaultFisherProfile });
     }
     return { ok: true };
   };
@@ -326,21 +429,27 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({
     setUsers((prev) => [newUser, ...prev]);
     setCurrentUserId(newUser.id);
     setRole(newUser.role);
+    setBuyerStatus('draft');
+    setFisherStatus('draft');
+    setBuyerVerification(null);
+    setFisherVerification(null);
     if (newUser.role === 'buyer') {
-      setBuyerProfile((prev) => ({
-        ...prev,
+      setBuyerProfile({
+        ...defaultBuyerProfile,
         name: newUser.name,
         company: newUser.company || newUser.name,
         email: newUser.email,
         phone: newUser.phone || '',
-      }));
-    } else {
-      setFisherProfile((prev) => ({
-        ...prev,
+      });
+      setBuyerVerification(startBuyerVerification());
+    } else if (newUser.role === 'fisher') {
+      setFisherProfile({
+        ...defaultFisherProfile,
         name: newUser.name,
         email: newUser.email,
         phone: newUser.phone || '',
-      }));
+      });
+      setFisherVerification(startFisherVerification());
     }
     return { ok: true };
   };
@@ -350,8 +459,160 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({
     setRole(null);
     setBuyerStatus('draft');
     setFisherStatus('draft');
+    setBuyerVerification(null);
+    setFisherVerification(null);
     setBuyerProfile({ ...defaultBuyerProfile });
     setFisherProfile({ ...defaultFisherProfile });
+  };
+
+  const recordVerification = (report: VerificationReport, subject: string) => {
+    const history: VerificationHistoryItem = {
+      id: `vh-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+      role: report.role,
+      subject,
+      provider: report.provider,
+      status: report.status,
+      riskScore: report.riskScore,
+      createdAt: report.createdAt,
+    };
+    setVerificationHistory((prev) => [history, ...prev]);
+  };
+
+  const submitBuyerVerification: AppState['submitBuyerVerification'] = async (
+    profile
+  ) => {
+    if (!currentUser) {
+      return;
+    }
+    setBuyerStatus('pending');
+    setBuyerVerification(startBuyerVerification());
+
+    let nextProfile = { ...profile };
+    if (isSupabaseConfigured()) {
+      const { updates, errors } = await uploadBuyerDocuments(
+        currentUser.id,
+        nextProfile
+      );
+      if (Object.keys(updates).length > 0) {
+        nextProfile = { ...nextProfile, ...updates };
+        setBuyerProfile(nextProfile);
+      }
+      if (errors.length > 0) {
+        pushNotification(
+          'Documents partiels',
+          `Certains documents n'ont pas été envoyés : ${errors.join(', ')}.`
+        );
+      }
+      await upsertBuyerProfile(currentUser.id, nextProfile);
+    } else if (nextProfile.idPhotoUri || nextProfile.kbisPhotoUri) {
+      pushNotification(
+        'Stockage KYC désactivé',
+        'Configurez Supabase pour enregistrer les documents.'
+      );
+    }
+
+    const remoteReport =
+      isOnline && canUseRemoteVerification()
+        ? await verifyBuyerRemote(nextProfile)
+        : null;
+    const report =
+      remoteReport ?? finalizeBuyerVerification(nextProfile, isOnline);
+    setBuyerVerification(report);
+    setBuyerStatus(report.status);
+    recordVerification(report, nextProfile.company || nextProfile.name);
+    setBuyerApplicants((prev) => {
+      const submittedAt = new Date().toISOString();
+      const payload: BuyerApplicant = {
+        ...nextProfile,
+        id: currentUser.id,
+        status: report.status,
+        submittedAt,
+      };
+      const index = prev.findIndex((item) => item.id === currentUser.id);
+      if (index === -1) {
+        return [payload, ...prev];
+      }
+      const next = [...prev];
+      next[index] = { ...next[index], ...payload };
+      return next;
+    });
+    pushNotification(
+      report.status === 'verified' ? 'KYC validé' : 'KYC en analyse',
+      report.status === 'rejected'
+        ? 'Le dossier acheteur a été refusé.'
+        : 'Votre dossier acheteur est en cours de vérification.'
+    );
+  };
+
+  const submitFisherVerification: AppState['submitFisherVerification'] = async (
+    profile
+  ) => {
+    if (!currentUser) {
+      return;
+    }
+    setFisherStatus('pending');
+    setFisherVerification(startFisherVerification());
+
+    let nextProfile = { ...profile };
+    if (isSupabaseConfigured()) {
+      const { updates, errors } = await uploadFisherDocuments(
+        currentUser.id,
+        nextProfile
+      );
+      if (Object.keys(updates).length > 0) {
+        nextProfile = { ...nextProfile, ...updates };
+        setFisherProfile(nextProfile);
+      }
+      if (errors.length > 0) {
+        pushNotification(
+          'Documents partiels',
+          `Certains documents n'ont pas été envoyés : ${errors.join(', ')}.`
+        );
+      }
+      await upsertFisherProfile(currentUser.id, nextProfile);
+    } else if (
+      nextProfile.licensePhotoUri ||
+      nextProfile.boatPhotoUri ||
+      nextProfile.insurancePhotoUri ||
+      nextProfile.ribPhotoUri
+    ) {
+      pushNotification(
+        'Stockage KYC désactivé',
+        'Configurez Supabase pour enregistrer les documents.'
+      );
+    }
+
+    const remoteReport =
+      isOnline && canUseRemoteVerification()
+        ? await verifyFisherRemote(nextProfile)
+        : null;
+    const report =
+      remoteReport ?? finalizeFisherVerification(nextProfile, isOnline);
+    setFisherVerification(report);
+    setFisherStatus(report.status);
+    recordVerification(report, nextProfile.boat || nextProfile.name);
+    setFisherApplicants((prev) => {
+      const submittedAt = new Date().toISOString();
+      const payload: FisherApplicant = {
+        ...nextProfile,
+        id: currentUser.id,
+        status: report.status,
+        submittedAt,
+      };
+      const index = prev.findIndex((item) => item.id === currentUser.id);
+      if (index === -1) {
+        return [payload, ...prev];
+      }
+      const next = [...prev];
+      next[index] = { ...next[index], ...payload };
+      return next;
+    });
+    pushNotification(
+      report.status === 'verified' ? 'KYC validé' : 'KYC en analyse',
+      report.status === 'rejected'
+        ? 'Le dossier pêcheur a été refusé.'
+        : 'Votre dossier pêcheur est en cours de vérification.'
+    );
   };
 
   const registerPort = (port: string) => {
@@ -388,6 +649,9 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({
   };
 
   const addListing: AppState['addListing'] = (listing) => {
+    if (!requireRole(['fisher'], 'Action réservée aux pêcheurs.')) {
+      return;
+    }
     const effectiveFisherName =
       fisherProfile.name.trim().length > 0 ? fisherProfile.name : fisherName;
     const createdAt = new Date().toISOString();
@@ -423,6 +687,9 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({
     pickupTime,
     note
   ) => {
+    if (!requireRole(['buyer'], 'Action réservée aux acheteurs.')) {
+      return;
+    }
     const listing = listings.find((item) => item.id === listingId);
     if (!listing) {
       return;
@@ -468,6 +735,9 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({
     id,
     status
   ) => {
+    if (!requireRole(['fisher'], 'Action réservée aux pêcheurs.', true)) {
+      return;
+    }
     setReservations((prev) =>
       prev.map((reservation) => {
         if (reservation.id !== id) {
@@ -520,6 +790,9 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({
   };
 
   const markReservationPaid: AppState['markReservationPaid'] = (id) => {
+    if (!requireRole(['buyer'], 'Action réservée aux acheteurs.', true)) {
+      return;
+    }
     setReservations((prev) =>
       prev.map((reservation) =>
         reservation.id === id
@@ -534,6 +807,9 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({
   };
 
   const addToCart: AppState['addToCart'] = (listingId, qtyKg) => {
+    if (!requireRole(['buyer'], 'Action réservée aux acheteurs.')) {
+      return;
+    }
     const listing = listings.find((item) => item.id === listingId);
     if (!listing) {
       return;
@@ -569,6 +845,9 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({
   };
 
   const updateCartQty: AppState['updateCartQty'] = (itemId, qtyKg) => {
+    if (!requireRole(['buyer'], 'Action réservée aux acheteurs.')) {
+      return;
+    }
     setCart((prev) =>
       prev.map((item) => {
         if (item.id !== itemId) {
@@ -585,14 +864,23 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({
   };
 
   const removeCartItem: AppState['removeCartItem'] = (itemId) => {
+    if (!requireRole(['buyer'], 'Action réservée aux acheteurs.')) {
+      return;
+    }
     setCart((prev) => prev.filter((item) => item.id !== itemId));
   };
 
   const clearCart: AppState['clearCart'] = () => {
+    if (!requireRole(['buyer'], 'Action réservée aux acheteurs.')) {
+      return;
+    }
     setCart([]);
   };
 
   const checkoutCart: AppState['checkoutCart'] = (pickupTime, note) => {
+    if (!requireRole(['buyer'], 'Action réservée aux acheteurs.')) {
+      return;
+    }
     if (cart.length === 0) {
       return;
     }
@@ -639,6 +927,9 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({
     id,
     status
   ) => {
+    if (!requireRole(['fisher'], 'Action réservée aux pêcheurs.', true)) {
+      return;
+    }
     setReservations((prev) =>
       prev.map((reservation) =>
         reservation.id === id
@@ -653,6 +944,9 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({
     lat,
     lng
   ) => {
+    if (!requireRole(['fisher'], 'Action réservée aux pêcheurs.', true)) {
+      return;
+    }
     const now = new Date().toISOString();
     setReservations((prev) =>
       prev.map((reservation) =>
@@ -673,6 +967,9 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({
     conformity,
     note
   ) => {
+    if (!requireRole(['buyer'], 'Action réservée aux acheteurs.', true)) {
+      return;
+    }
     setReservations((prev) =>
       prev.map((reservation) => {
         if (reservation.id !== id) {
@@ -695,6 +992,9 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({
   };
 
   const releaseEscrow: AppState['releaseEscrow'] = (id) => {
+    if (!requireRole(['buyer'], 'Action réservée aux acheteurs.', true)) {
+      return;
+    }
     let released = false;
     setReservations((prev) =>
       prev.map((reservation) =>
@@ -723,6 +1023,9 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({
   };
 
   const resolveDispute: AppState['resolveDispute'] = (id, resolution) => {
+    if (!requireRole(['admin'], 'Action réservée aux administrateurs.')) {
+      return;
+    }
     const now = new Date().toISOString();
     setReservations((prev) =>
       prev.map((reservation) => {
@@ -768,6 +1071,9 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({
   };
 
   const requestBuyerArrival: AppState['requestBuyerArrival'] = (id) => {
+    if (!requireRole(['buyer'], 'Action réservée aux acheteurs.')) {
+      return;
+    }
     const now = new Date().toISOString();
     let updated = false;
     setReservations((prev) =>
@@ -791,6 +1097,9 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({
   };
 
   const confirmBuyerArrival: AppState['confirmBuyerArrival'] = (id) => {
+    if (!requireRole(['fisher'], 'Action réservée aux pêcheurs.', true)) {
+      return;
+    }
     const now = new Date().toISOString();
     let updated = false;
     setReservations((prev) =>
@@ -818,6 +1127,9 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({
   };
 
   const declareFisherArrival: AppState['declareFisherArrival'] = (id) => {
+    if (!requireRole(['fisher'], 'Action réservée aux pêcheurs.', true)) {
+      return;
+    }
     const now = new Date().toISOString();
     let updated = false;
     setReservations((prev) =>
@@ -898,10 +1210,28 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({
   };
 
   const declareDelay: AppState['declareDelay'] = (id, triggeredBy) => {
+    if (
+      !requireRole(
+        ['buyer', 'fisher'],
+        'Action réservée aux comptes métier.',
+        true
+      )
+    ) {
+      return;
+    }
     applyCompensation(id, triggeredBy, 'late');
   };
 
   const cancelAfterArrival: AppState['cancelAfterArrival'] = (id, triggeredBy) => {
+    if (
+      !requireRole(
+        ['buyer', 'fisher'],
+        'Action réservée aux comptes métier.',
+        true
+      )
+    ) {
+      return;
+    }
     applyCompensation(id, triggeredBy, 'cancelled_after_arrival');
   };
 
@@ -973,6 +1303,9 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({
     id,
     status
   ) => {
+    if (!requireRole(['admin'], 'Action réservée aux administrateurs.')) {
+      return;
+    }
     setFisherApplicants((prev) =>
       prev.map((applicant) =>
         applicant.id === id ? { ...applicant, status } : applicant
@@ -984,6 +1317,9 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({
     id,
     status
   ) => {
+    if (!requireRole(['admin'], 'Action réservée aux administrateurs.')) {
+      return;
+    }
     setBuyerApplicants((prev) =>
       prev.map((applicant) =>
         applicant.id === id ? { ...applicant, status } : applicant
@@ -1003,6 +1339,9 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({
     setFisherProfile({ ...defaultFisherProfile });
     setBuyerStatus('draft');
     setBuyerProfile({ ...defaultBuyerProfile });
+    setBuyerVerification(null);
+    setFisherVerification(null);
+    setVerificationHistory([]);
     setKnownPortsState(knownPorts);
     setListings(initialListings);
     setReservations(initialReservations);
@@ -1033,6 +1372,9 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({
           fisherProfile: FisherProfile;
           buyerStatus: BuyerStatus;
           buyerProfile: BuyerProfile;
+          buyerVerification: VerificationReport | null;
+          fisherVerification: VerificationReport | null;
+          verificationHistory: VerificationHistoryItem[];
           knownPorts: string[];
           listings: Listing[];
           reservations: Reservation[];
@@ -1074,6 +1416,15 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({
             ...defaultBuyerProfile,
             ...data.buyerProfile,
           });
+        }
+        if (data.buyerVerification) {
+          setBuyerVerification(data.buyerVerification);
+        }
+        if (data.fisherVerification) {
+          setFisherVerification(data.fisherVerification);
+        }
+        if (data.verificationHistory) {
+          setVerificationHistory(data.verificationHistory);
         }
         if (data.knownPorts && data.knownPorts.length > 0) {
           const merged = [...data.knownPorts, ...knownPorts].reduce<string[]>(
@@ -1216,6 +1567,9 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({
       fisherProfile,
       buyerStatus,
       buyerProfile,
+      buyerVerification,
+      fisherVerification,
+      verificationHistory,
       knownPorts: knownPortsState,
       listings,
       reservations,
@@ -1238,6 +1592,9 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({
     fisherProfile,
     buyerStatus,
     buyerProfile,
+    buyerVerification,
+    fisherVerification,
+    verificationHistory,
     knownPortsState,
     listings,
     reservations,
@@ -1285,6 +1642,11 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({
       setBuyerStatus,
       buyerProfile,
       setBuyerProfile,
+      buyerVerification,
+      fisherVerification,
+      verificationHistory,
+      submitBuyerVerification,
+      submitFisherVerification,
       knownPorts: knownPortsState,
       registerPort,
       listings,
@@ -1341,6 +1703,9 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({
       fisherProfile,
       buyerStatus,
       buyerProfile,
+      buyerVerification,
+      fisherVerification,
+      verificationHistory,
       knownPortsState,
       listings,
       reservations,
@@ -1356,6 +1721,8 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({
       queue,
       syncHistory,
       hydrated,
+      submitBuyerVerification,
+      submitFisherVerification,
     ]
   );
 

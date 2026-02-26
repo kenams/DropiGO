@@ -22,7 +22,8 @@ const ListingDetailContent: React.FC<ListingDetailProps> = ({
   listingId,
   onBack,
 }) => {
-  const { listings, createReservation, addToCart } = useAppState();
+  const { listings, createReservation, addToCart, role } = useAppState();
+  const canBuyer = role === 'buyer' || role === 'admin';
   const [qtyKg, setQtyKg] = useState(1);
   const [pickupTime, setPickupTime] = useState('');
   const [note, setNote] = useState('');
@@ -86,13 +87,13 @@ const ListingDetailContent: React.FC<ListingDetailProps> = ({
         <Text style={styles.cardMuted}>Méthode : {listing.method}</Text>
         <Text style={styles.cardMuted}>Calibre : {listing.sizeGrade}</Text>
         <Text style={styles.cardMuted}>
-          Bateau : {listing.fisherBoat ?? '—'}
+          Bateau : {listing.fisherBoat  ?? '—'}
         </Text>
         <Text style={styles.cardMuted}>
-          Licence : {listing.fisherPermit ?? '—'}
+          Licence : {listing.fisherPermit  ?? '—'}
         </Text>
         <Text style={styles.cardMuted}>
-          Immatriculation : {listing.fisherRegistration ?? '—'}
+          Immatriculation : {listing.fisherRegistration  ?? '—'}
         </Text>
         <Text style={styles.cardMuted}>{listing.location}</Text>
         <Text style={styles.cardMuted}>{listing.pickupWindow}</Text>
@@ -112,85 +113,105 @@ const ListingDetailContent: React.FC<ListingDetailProps> = ({
         Paiement séquestré • débloqué après validation conjointe
       </Text>
 
-      <Text style={styles.label}>Quantité (kg)</Text>
-      <View style={styles.qtyRow}>
-        {quickQty.map((value) => (
-          <Pressable
-            key={value}
-            onPress={() => setQtyKg(Math.min(value, listing.stockKg))}
-            style={[styles.qtyChip, qtyKg === value && styles.qtyChipActive]}
-          >
-            <Text style={[styles.qtyChipText, qtyKg === value && styles.qtyChipTextActive]}>
-              {value} kg
-            </Text>
-          </Pressable>
-        ))}
-      </View>
-      <View style={styles.qtyInputRow}>
-        <Pressable
-          onPress={() => setQtyKg((prev) => Math.max(1, prev - 1))}
-          style={styles.qtyButton}
-        >
-          <Text style={styles.qtyButtonText}>-</Text>
-        </Pressable>
-        <TextInput
-          value={String(qtyKg)}
-          onChangeText={(value) => {
-            const next = Number(value.replace(',', '.'));
-            if (Number.isFinite(next)) {
-              setQtyKg(Math.max(1, Math.min(next, listing.stockKg)));
-            }
-          }}
-          keyboardType="numeric"
-          style={styles.qtyInput}
-        />
-        <Pressable
-          onPress={() => setQtyKg((prev) => Math.min(listing.stockKg, prev + 1))}
-          style={styles.qtyButton}
-        >
-          <Text style={styles.qtyButtonText}>+</Text>
-        </Pressable>
-      </View>
-      <Text style={styles.helper}>Stock disponible : {listing.stockKg} kg</Text>
+      {canBuyer ? (
+        <>
+          <Text style={styles.label}>Quantité (kg)</Text>
+          <View style={styles.qtyRow}>
+            {quickQty.map((value) => (
+              <Pressable
+                key={value}
+                onPress={() => setQtyKg(Math.min(value, listing.stockKg))}
+                style={[styles.qtyChip, qtyKg === value && styles.qtyChipActive]}
+              >
+                <Text
+                  style={[
+                    styles.qtyChipText,
+                    qtyKg === value && styles.qtyChipTextActive,
+                  ]}
+                >
+                  {value} kg
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+          <View style={styles.qtyInputRow}>
+            <Pressable
+              onPress={() => setQtyKg((prev) => Math.max(1, prev - 1))}
+              style={styles.qtyButton}
+            >
+              <Text style={styles.qtyButtonText}>-</Text>
+            </Pressable>
+            <TextInput
+              value={String(qtyKg)}
+              onChangeText={(value) => {
+                const next = Number(value.replace(',', '.'));
+                if (Number.isFinite(next)) {
+                  setQtyKg(Math.max(1, Math.min(next, listing.stockKg)));
+                }
+              }}
+              keyboardType="numeric"
+              style={styles.qtyInput}
+            />
+            <Pressable
+              onPress={() => setQtyKg((prev) => Math.min(listing.stockKg, prev + 1))}
+              style={styles.qtyButton}
+            >
+              <Text style={styles.qtyButtonText}>+</Text>
+            </Pressable>
+          </View>
+          <Text style={styles.helper}>Stock disponible : {listing.stockKg} kg</Text>
 
-      <Text style={styles.label}>Créneau de retrait</Text>
-      <View style={styles.slotRow}>
-        {availableSlots.map((slot) => (
-          <Pressable
-            key={slot}
-            onPress={() => setPickupTime(slot)}
-            style={[styles.slotChip, pickupTime === slot && styles.slotChipActive]}
-          >
-            <Text style={[styles.slotChipText, pickupTime === slot && styles.slotChipTextActive]}>
-              {slot}
-            </Text>
-          </Pressable>
-        ))}
-      </View>
+          <Text style={styles.label}>Créneau de retrait</Text>
+          <View style={styles.slotRow}>
+            {availableSlots.map((slot) => (
+              <Pressable
+                key={slot}
+                onPress={() => setPickupTime(slot)}
+                style={[styles.slotChip, pickupTime === slot && styles.slotChipActive]}
+              >
+                <Text
+                  style={[
+                    styles.slotChipText,
+                    pickupTime === slot && styles.slotChipTextActive,
+                  ]}
+                >
+                  {slot}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
 
-      <Text style={styles.label}>Note pour le pêcheur (optionnel)</Text>
-      <TextInput
-        value={note}
-        onChangeText={setNote}
-        placeholder="Ex: prévoir glaçons, remise à quai"
-        placeholderTextColor={colors.muted}
-        style={styles.noteInput}
-        multiline
-      />
+          <Text style={styles.label}>Note pour le pêcheur (optionnel)</Text>
+          <TextInput
+            value={note}
+            onChangeText={setNote}
+            placeholder="Ex: prévoir glaçons, remise à quai"
+            placeholderTextColor={colors.muted}
+            style={styles.noteInput}
+            multiline
+          />
 
-      <View style={styles.totalRow}>
-        <Text style={styles.totalLabel}>Total estimé</Text>
-        <Text style={styles.totalValue}>{totalPrice.toFixed(2)} €</Text>
-      </View>
+          <View style={styles.totalRow}>
+            <Text style={styles.totalLabel}>Total estimé</Text>
+            <Text style={styles.totalValue}>{totalPrice.toFixed(2)} €</Text>
+          </View>
 
-      {error.length > 0 && <Text style={styles.error}>{error}</Text>}
-      <View style={styles.actions}>
-        <PrimaryButton label="Payer en séquestre" onPress={handleReserve} />
-        <GhostButton
-          label="Ajouter au panier"
-          onPress={() => addToCart(listing.id, qtyKg)}
-        />
-      </View>
+          {error.length > 0 && <Text style={styles.error}>{error}</Text>}
+          <View style={styles.actions}>
+            <PrimaryButton label="Payer en séquestre" onPress={handleReserve} />
+            <GhostButton
+              label="Ajouter au panier"
+              onPress={() => addToCart(listing.id, qtyKg)}
+            />
+          </View>
+        </>
+      ) : (
+        <Card style={styles.noticeCard}>
+          <Text style={styles.noticeText}>
+            Réservation disponible uniquement pour les acheteurs.
+          </Text>
+        </Card>
+      )}
     </Screen>
   );
 };
@@ -390,5 +411,12 @@ const styles = StyleSheet.create({
   },
   actions: {
     gap: spacing.sm,
+  },
+  noticeCard: {
+    marginTop: spacing.md,
+  },
+  noticeText: {
+    ...textStyles.caption,
+    color: colors.muted,
   },
 });

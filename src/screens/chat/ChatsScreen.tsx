@@ -9,7 +9,8 @@ import { colors, spacing, textStyles } from '../../theme';
 export const ChatsScreen: React.FC<{ onOpenThread?: (id: string) => void }> = ({
   onOpenThread,
 }) => {
-  const { chatThreads } = useAppState();
+  const { chatThreads, role } = useAppState();
+  const canChat = role === 'buyer' || role === 'fisher' || role === 'admin';
 
   const sorted = useMemo(
     () =>
@@ -22,6 +23,11 @@ export const ChatsScreen: React.FC<{ onOpenThread?: (id: string) => void }> = ({
   return (
     <Screen style={styles.container}>
       <Text style={styles.title}>Messages</Text>
+      {!canChat && (
+        <Text style={styles.noticeText}>
+          Fonction réservée aux comptes métier.
+        </Text>
+      )}
       <FlatList
         data={sorted}
         keyExtractor={(item) => item.id}
@@ -31,7 +37,14 @@ export const ChatsScreen: React.FC<{ onOpenThread?: (id: string) => void }> = ({
         }
         renderItem={({ item }) => (
           <Pressable
-            onPress={() => onOpenThread && onOpenThread(item.id)}
+            onPress={() => {
+              if (!canChat) {
+                return;
+              }
+              if (onOpenThread) {
+                onOpenThread(item.id);
+              }
+            }}
             style={styles.pressable}
           >
             <Card style={styles.card}>
@@ -111,6 +124,11 @@ const styles = StyleSheet.create({
     ...textStyles.caption,
     color: '#FFFFFF',
     fontFamily: textStyles.bodyBold.fontFamily,
+  },
+  noticeText: {
+    ...textStyles.caption,
+    color: colors.muted,
+    marginBottom: spacing.sm,
   },
 });
 

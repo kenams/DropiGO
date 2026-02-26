@@ -5,7 +5,6 @@ import { Card } from '../../components/Card';
 import { Field } from '../../components/Field';
 import { Logo } from '../../components/Logo';
 import { Screen } from '../../components/Screen';
-import { Tag } from '../../components/Tag';
 import { useAppState } from '../../state/AppState';
 import { colors, spacing, textStyles } from '../../theme';
 import { Role } from '../../types';
@@ -21,6 +20,21 @@ export const AuthScreen: React.FC = () => {
   const [company, setCompany] = useState('');
   const [role, setRole] = useState<Role>('buyer');
   const [error, setError] = useState('');
+
+  const fillDemoBuyer = () => {
+    setIdentifier('acheteur@dropipeche.demo');
+    setPassword('demo123');
+  };
+
+  const fillDemoFisher = () => {
+    setIdentifier('pecheur@dropipeche.demo');
+    setPassword('demo123');
+  };
+
+  const fillDemoAdmin = () => {
+    setIdentifier('admin@dropipeche.demo');
+    setPassword('admin123');
+  };
 
   const handleLogin = () => {
     const result = signIn(identifier, password);
@@ -87,13 +101,28 @@ export const AuthScreen: React.FC = () => {
 
             <View style={styles.demoBox}>
               <Text style={styles.demoTitle}>Comptes démo</Text>
-              <Text style={styles.demoText}>Pêcheur : pecheur@dropipeche.demo</Text>
-              <Text style={styles.demoText}>Acheteur : acheteur@dropipeche.demo</Text>
+              <View style={styles.demoButtons}>
+                <GhostButton label="Acheteur démo" onPress={fillDemoBuyer} />
+                <GhostButton label="Pêcheur démo" onPress={fillDemoFisher} />
+                <GhostButton label="Admin démo" onPress={fillDemoAdmin} />
+              </View>
               <Text style={styles.demoText}>Mot de passe : demo123</Text>
             </View>
           </>
         ) : (
           <>
+            <Text style={styles.sectionTitle}>Rôle</Text>
+            <View style={styles.roleRow}>
+              <GhostButton
+                label={role === 'buyer' ? 'Acheteur ✓' : 'Acheteur'}
+                onPress={() => setRole('buyer')}
+              />
+              <GhostButton
+                label={role === 'fisher' ? 'Pêcheur ✓' : 'Pêcheur'}
+                onPress={() => setRole('fisher')}
+              />
+            </View>
+
             <Field label="Nom complet" value={name} onChangeText={setName} />
             <Field
               label="Email"
@@ -115,18 +144,6 @@ export const AuthScreen: React.FC = () => {
               secureTextEntry
             />
 
-            <Text style={styles.sectionTitle}>Rôle</Text>
-            <View style={styles.roleRow}>
-              <GhostButton
-                label={role === 'buyer' ? 'Acheteur ✓' : 'Acheteur'}
-                onPress={() => setRole('buyer')}
-              />
-              <GhostButton
-                label={role === 'fisher' ? 'Pêcheur ✓' : 'Pêcheur'}
-                onPress={() => setRole('fisher')}
-              />
-            </View>
-
             {role === 'buyer' && (
               <Field
                 label="Société"
@@ -135,11 +152,6 @@ export const AuthScreen: React.FC = () => {
                 placeholder="Nom de l’entreprise"
               />
             )}
-
-            <View style={styles.statusRow}>
-              <Text style={styles.statusLabel}>KYC requis :</Text>
-              <Tag label="Oui" tone="warning" />
-            </View>
 
             {error.length > 0 && <Text style={styles.error}>{error}</Text>}
             <PrimaryButton label="Créer le compte" onPress={handleSignup} />
@@ -182,17 +194,6 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
     flexWrap: 'wrap',
   },
-  statusRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    marginBottom: spacing.md,
-  },
-  statusLabel: {
-    ...textStyles.bodyBold,
-    color: colors.muted,
-    fontSize: 13,
-  },
   error: {
     ...textStyles.caption,
     color: colors.danger,
@@ -205,6 +206,12 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
     backgroundColor: 'transparent',
+  },
+  demoButtons: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+    marginBottom: spacing.xs,
   },
   demoTitle: {
     ...textStyles.bodyBold,

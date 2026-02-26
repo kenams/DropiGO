@@ -1,43 +1,67 @@
-import React from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import React, { useState } from 'react';
+import { Alert, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
 import { PrimaryButton, GhostButton } from '../../components/Buttons';
 import { BackButton } from '../../components/BackButton';
 import { Card } from '../../components/Card';
-import { Field } from '../../components/Field';
 import { Logo } from '../../components/Logo';
 import { Screen } from '../../components/Screen';
 import { Tag } from '../../components/Tag';
+import { startBuyerVerification } from '../../services/verification';
 import { useAppState } from '../../state/AppState';
 import { colors, spacing, textStyles } from '../../theme';
+import { VerificationCheck } from '../../types';
 
 type Props = { onBack?: () => void };
 
+type BuyerDocField = 'idPhotoUri' | 'kbisPhotoUri';
+
+const statusLabel = (status: 'draft' | 'pending' | 'verified' | 'rejected') => {
+  if (status === 'verified') {
+    return { label: 'Vérifié', tone: 'success' as const };
+  }
+  if (status === 'rejected') {
+    return { label: 'Refusé', tone: 'danger' as const };
+  }
+  if (status === 'pending') {
+    return { label: 'En attente', tone: 'warning' as const };
+  }
+  return { label: 'À compléter', tone: 'warning' as const };
+};
+
+const checkTone = (check: VerificationCheck) => {
+  if (check.status === 'passed') {
+    return 'success' as const;
+  }
+  if (check.status === 'failed') {
+    return 'danger' as const;
+  }
+  return 'warning' as const;
+};
+
+const checkLabel = (check: VerificationCheck) => {
+  if (check.status === 'passed') {
+    return 'OK';
+  }
+  if (check.status === 'failed') {
+    return 'KO';
+  }
+  return 'En attente';
+};
+
 const BuyerOnboardingContent: React.FC<Props> = ({ onBack }) => {
-  const { buyerStatus, setBuyerStatus, signOut, buyerProfile, setBuyerProfile } =
-    useAppState();
-
-  const updateField = (key: keyof typeof buyerProfile) => (value: string) => {
-    setBuyerProfile({ ...buyerProfile, [key]: value });
-  };
-
-  const requiredFields = [
-    buyerProfile.name,
-    buyerProfile.company,
-    buyerProfile.registry,
-    buyerProfile.activity,
-    buyerProfile.phone,
-    buyerProfile.email,
-    buyerProfile.paymentMethod,
-    buyerProfile.idNumber,
-    buyerProfile.address,
-  ];
-  const isComplete = requiredFields.every((value) => value.trim().length > 0);
-  const progress = Math.round(
-    (requiredFields.filter((value) => value.trim().length > 0).length /
-      requiredFields.length) *
-      100
-  );
-  const canSubmit = buyerStatus === 'draft' && isComplete;
+  const {
+    role,
+    buyerStatus,
+    signOut,
+    buyerProfile,
+    setBuyerProfile,
+    submitBuyerVerification,
+    buyerVerification,
+  } = useAppState();
+  const canBuyer = role === 'buyer' || role === 'admin';
+  const [showPicker, setShowPicker] = useState(false);
+  const [sending, setSending] = useState(false);
 
   const handleBack = () => {
     if (onBack) {
@@ -47,106 +71,213 @@ const BuyerOnboardingContent: React.FC<Props> = ({ onBack }) => {
     signOut();
   };
 
+  const report = buyerVerification ?? startBuyerVerification();
+  const status = statusLabel(buyerStatus);
+
+  const handleAutoFill = () => {
+    const profile = {
+      ...buyerProfile,
+      name: buyerProfile.name || 'Claire Martin',
+      company: buyerProfile.company || 'Restaurant La Vague',
+      registry: buyerProfile.registry || '55210055400013',
+      activity: buyerProfile.activity || 'Restaurant',
+      phone: buyerProfile.phone || '+33 6 22 22 22 22',
+      email: buyerProfile.email || 'acheteur@dropipeche.demo',
+      paymentMethod: buyerProfile.paymentMethod || 'Carte professionnelle',
+      idNumber: buyerProfile.idNumber || 'ID-FR-932193',
+      address: buyerProfile.address || 'Quai des Pêcheurs, Sète',
+    };
+    setBuyerProfile(profile);
+    return profile;
+  };
+
+  const handleSubmit = async () => {
+    if (sending) {
+      return;
+    }
+    if (!buyerProfile.idPhotoUri && !buyerProfile.kbisPhotoUri) {
+      Alert.alert(
+        'Documents manquants',
+        'Ajoutez au moins un document avant d’envoyer le dossier.'
+      );
+      return;
+    }
+    setSending(true);
+    const filledProfile = handleAutoFill();
+    await submitBuyerVerification(filledProfile);
+    setSending(false);
+  };
+
+  const pickFromLibrary = async (field: BuyerDocField) => {
+    const { status: permission } =
+      await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (permission !== 'granted') {
+      Alert.alert(
+        'Autorisation requise',
+        'Autorisez l’accès aux photos pour importer un document.'
+      );
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      quality: 0.7,
+    });
+    if (!result.canceled) {
+      setBuyerProfile({ ...buyerProfile, [field]: result.assets[0].uri });
+      setShowPicker(false);
+    }
+  };
+
+  const takePhoto = async (field: BuyerDocField) => {
+    const { status: permission } =
+      await ImagePicker.requestCameraPermissionsAsync();
+    if (permission !== 'granted') {
+      Alert.alert(
+        'Autorisation requise',
+        'Autorisez la caméra pour capturer un document.'
+      );
+      return;
+    }
+    const result = await ImagePicker.launchCameraAsync({
+      quality: 0.7,
+    });
+    if (!result.canceled) {
+      setBuyerProfile({ ...buyerProfile, [field]: result.assets[0].uri });
+      setShowPicker(false);
+    }
+  };
+
+  if (!canBuyer) {
+    return (
+      <Screen scroll>
+        {onBack && <BackButton onPress={handleBack} style={styles.back} />}
+        <Logo size={72} showWordmark={false} compact />
+        <Text style={styles.title}>Dossier acheteur</Text>
+        <Text style={styles.subtitle}>
+          Vérification automatique France (SIRENE/INSEE + KYC PSP).
+        </Text>
+        <Card style={styles.card}>
+          <Text style={styles.notice}>
+            Actions réservées aux acheteurs.
+          </Text>
+        </Card>
+      </Screen>
+    );
+  }
+
   return (
     <Screen scroll>
       {onBack && <BackButton onPress={handleBack} style={styles.back} />}
       <Logo size={72} showWordmark={false} compact />
       <Text style={styles.title}>Dossier acheteur</Text>
       <Text style={styles.subtitle}>
-        Vérifiez vos informations pour activer les achats.
+        Vérification automatique France (SIRENE/INSEE + KYC PSP).
       </Text>
 
       <Card style={styles.card}>
-        <View style={styles.progressRow}>
-          <Text style={styles.progressLabel}>Dossier complet</Text>
-          <Text style={styles.progressValue}>{progress}%</Text>
-        </View>
-        <View style={styles.progressBar}>
-          <View style={[styles.progressFill, { width: `${progress}%` }]} />
-        </View>
-        <Field
-          label="Nom et prénom"
-          value={buyerProfile.name}
-          onChangeText={updateField('name')}
-        />
-        <Field
-          label="Société"
-          value={buyerProfile.company}
-          onChangeText={updateField('company')}
-        />
-        <Field
-          label="Registre de commerce"
-          value={buyerProfile.registry}
-          onChangeText={updateField('registry')}
-        />
-        <Field
-          label="Activité"
-          value={buyerProfile.activity}
-          onChangeText={updateField('activity')}
-        />
-        <Field
-          label="Moyen de paiement"
-          value={buyerProfile.paymentMethod}
-          onChangeText={updateField('paymentMethod')}
-          placeholder="Ex: Carte pro, virement"
-        />
-        <Field
-          label="Téléphone"
-          value={buyerProfile.phone}
-          onChangeText={updateField('phone')}
-          keyboardType="phone-pad"
-        />
-        <Field
-          label="Email"
-          value={buyerProfile.email}
-          onChangeText={updateField('email')}
-          keyboardType="email-address"
-        />
-        <Field
-          label="Pièce d'identité (N°)"
-          value={buyerProfile.idNumber}
-          onChangeText={updateField('idNumber')}
-        />
-        <Field
-          label="Adresse"
-          value={buyerProfile.address}
-          onChangeText={updateField('address')}
-        />
-
-        {!isComplete && (
-          <Text style={styles.notice}>Complétez tous les champs pour soumettre.</Text>
-        )}
-
         <PrimaryButton
-          label={
-            buyerStatus === 'draft'
-              ? 'Soumettre le dossier'
-              : buyerStatus === 'pending'
-              ? 'Dossier envoyé'
-              : 'Validé'
-          }
-          onPress={() => setBuyerStatus('pending')}
-          disabled={!canSubmit}
+          label="Scanner documents (auto)"
+          onPress={() => setShowPicker(true)}
+          disabled={sending}
         />
+        <Text style={styles.notice}>
+          Choisissez la pièce d’identité ou le Kbis, puis importez ou scannez.
+        </Text>
+      </Card>
+
+      <Card style={styles.card}>
+        <Text style={styles.sectionTitle}>Documents KYC</Text>
+        <View style={styles.docRow}>
+          <Text style={styles.meta}>Pièce d’identité</Text>
+          <Tag
+            label={buyerProfile.idPhotoUri ? 'Chargé' : 'Manquant'}
+            tone={buyerProfile.idPhotoUri ? 'success' : 'warning'}
+          />
+        </View>
+        <Text style={styles.caption}>Recto/verso, lisible et valide.</Text>
+        <View style={styles.docRow}>
+          <Text style={styles.meta}>Extrait Kbis</Text>
+          <Tag
+            label={buyerProfile.kbisPhotoUri ? 'Chargé' : 'Manquant'}
+            tone={buyerProfile.kbisPhotoUri ? 'success' : 'warning'}
+          />
+        </View>
+        <Text style={styles.caption}>Dernier document de société.</Text>
+        <View style={styles.actions}>
+          <PrimaryButton
+            label={sending ? 'Envoi en cours...' : 'Envoyer le dossier'}
+            onPress={handleSubmit}
+            disabled={sending}
+          />
+        </View>
       </Card>
 
       <View style={styles.statusRow}>
         <Text style={styles.statusLabel}>Statut :</Text>
-        {buyerStatus === 'draft' ? (
-          <Tag label="À compléter" tone="warning" />
-        ) : buyerStatus === 'pending' ? (
-          <Tag label="En attente" tone="warning" />
-        ) : (
-          <Tag label="Validé" tone="success" />
-        )}
+        <Tag label={status.label} tone={status.tone} />
       </View>
 
-      <GhostButton
-        label="Simuler validation admin"
-        onPress={() => setBuyerStatus('approved')}
-      />
-      <View style={styles.spacer} />
+      {buyerStatus === 'rejected' && report.failureReason && (
+        <Text style={styles.notice}>Motif : {report.failureReason}</Text>
+      )}
+
+      <Card style={styles.card}>
+        <Text style={styles.sectionTitle}>Contrôles automatiques</Text>
+        {report.checks.map((check) => (
+          <View key={check.id} style={styles.checkRow}>
+            <View style={styles.checkText}>
+              <Text style={styles.meta}>{check.label}</Text>
+              {check.detail && <Text style={styles.caption}>{check.detail}</Text>}
+            </View>
+            <Tag label={checkLabel(check)} tone={checkTone(check)} />
+          </View>
+        ))}
+      </Card>
+
       <GhostButton label="Changer de compte" onPress={signOut} />
+
+      <Modal transparent visible={showPicker} animationType="fade">
+        <Pressable
+          style={styles.modalOverlay}
+          onPress={() => setShowPicker(false)}
+        >
+          <Pressable style={styles.modalCard} onPress={() => null}>
+            <Text style={styles.modalTitle}>Ajouter un document</Text>
+
+            <View style={styles.modalSection}>
+              <Text style={styles.modalLabel}>Pièce d’identité</Text>
+              <Text style={styles.modalHint}>Recto/verso, lisible et valide.</Text>
+              <View style={styles.modalActions}>
+                <GhostButton
+                  label="Importer"
+                  onPress={() => pickFromLibrary('idPhotoUri')}
+                />
+                <GhostButton
+                  label="Scanner"
+                  onPress={() => takePhoto('idPhotoUri')}
+                />
+              </View>
+            </View>
+
+            <View style={styles.modalSection}>
+              <Text style={styles.modalLabel}>Extrait Kbis</Text>
+              <Text style={styles.modalHint}>Dernier document de société.</Text>
+              <View style={styles.modalActions}>
+                <GhostButton
+                  label="Importer"
+                  onPress={() => pickFromLibrary('kbisPhotoUri')}
+                />
+                <GhostButton
+                  label="Scanner"
+                  onPress={() => takePhoto('kbisPhotoUri')}
+                />
+              </View>
+            </View>
+
+            <GhostButton label="Fermer" onPress={() => setShowPicker(false)} />
+          </Pressable>
+        </Pressable>
+      </Modal>
     </Screen>
   );
 };
@@ -162,58 +293,94 @@ export const BuyerOnboardingStandalone: React.FC<Props> = ({ onBack }) => {
 const styles = StyleSheet.create({
   back: {
     marginBottom: spacing.md,
-    marginTop: spacing.sm,
   },
   title: {
     ...textStyles.h2,
     marginBottom: spacing.xs,
   },
   subtitle: {
-    ...textStyles.body,
-    color: colors.muted,
+    ...textStyles.caption,
     marginBottom: spacing.lg,
   },
   card: {
     marginBottom: spacing.lg,
   },
-  progressRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: spacing.xs,
-  },
-  progressLabel: {
-    ...textStyles.caption,
-  },
-  progressValue: {
-    ...textStyles.bodyBold,
-  },
-  progressBar: {
-    height: 8,
-    borderRadius: 999,
-    backgroundColor: colors.border,
-    overflow: 'hidden',
-    marginBottom: spacing.md,
-  },
-  progressFill: {
-    height: '100%',
-    backgroundColor: colors.success,
-  },
   notice: {
     ...textStyles.caption,
     marginBottom: spacing.sm,
+  },
+  docRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: spacing.xs,
   },
   statusRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
-    marginBottom: spacing.md,
+    marginBottom: spacing.sm,
   },
   statusLabel: {
     ...textStyles.bodyBold,
     color: colors.muted,
     fontSize: 13,
   },
-  spacer: {
-    height: spacing.sm,
+  sectionTitle: {
+    ...textStyles.h3,
+    marginBottom: spacing.sm,
+  },
+  checkRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: spacing.sm,
+  },
+  checkText: {
+    flex: 1,
+    paddingRight: spacing.sm,
+  },
+  meta: {
+    ...textStyles.body,
+    fontSize: 13,
+  },
+  caption: {
+    ...textStyles.caption,
+    color: colors.muted,
+  },
+  actions: {
+    marginTop: spacing.sm,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(6, 10, 16, 0.4)',
+    justifyContent: 'center',
+    padding: spacing.lg,
+  },
+  modalCard: {
+    backgroundColor: colors.surface,
+    borderRadius: 18,
+    padding: spacing.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    gap: spacing.md,
+  },
+  modalTitle: {
+    ...textStyles.h3,
+  },
+  modalSection: {
+    gap: spacing.xs,
+  },
+  modalLabel: {
+    ...textStyles.bodyBold,
+  },
+  modalHint: {
+    ...textStyles.caption,
+    color: colors.muted,
+  },
+  modalActions: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    flexWrap: 'wrap',
   },
 });

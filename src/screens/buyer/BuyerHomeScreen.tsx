@@ -1,4 +1,4 @@
-﻿import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { FlatList, Image, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
@@ -11,8 +11,6 @@ import { Screen } from '../../components/Screen';
 import { useAppState } from '../../state/AppState';
 import { colors, radius, spacing, textStyles } from '../../theme';
 import { BuyerStackParamList } from '../../navigation/types';
-
-// Simple buyer feed for the MVP demo.
 
 type NavProp = StackNavigationProp<BuyerStackParamList, 'BuyerHome'>;
 
@@ -34,7 +32,8 @@ export const BuyerHomeStandalone: React.FC<{
 const BuyerHomeContent: React.FC<{
   onOpenListing: (listingId: string) => void;
 }> = ({ onOpenListing }) => {
-  const { listings, signOut, registerPort } = useAppState();
+  const { listings, signOut, registerPort, role } = useAppState();
+  const canBuyer = role === 'buyer' || role === 'admin';
   const [searchQuery, setSearchQuery] = useState('');
   const [filterPort, setFilterPort] = useState('');
   const [filterBoat, setFilterBoat] = useState('');
@@ -73,9 +72,9 @@ const BuyerHomeContent: React.FC<{
     });
   }, [listings, searchQuery, filterPort, filterBoat, maxPrice]);
 
-  return (
-    <Screen style={styles.container}>
-      <BackButton onPress={signOut} style={styles.back} />
+  const header = (
+    <View>
+      {role !== 'admin' && <BackButton onPress={signOut} style={styles.back} />}
       <View style={styles.headerRow}>
         <Logo size={64} showWordmark={false} compact />
         <View style={styles.headerText}>
@@ -131,11 +130,16 @@ const BuyerHomeContent: React.FC<{
           placeholder="Ex: 18"
         />
       </Card>
+    </View>
+  );
 
+  return (
+    <Screen style={styles.container}>
       <FlatList
         data={listingItems}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.list}
+        ListHeaderComponent={header}
         ListEmptyComponent={
           <Text style={styles.empty}>Aucune pêche trouvée.</Text>
         }
@@ -150,10 +154,16 @@ const BuyerHomeContent: React.FC<{
             <Text style={styles.cardText}>Stock : {item.stockKg} kg</Text>
             <Text style={styles.cardMuted}>{item.location}</Text>
             <Text style={styles.cardMuted}>{item.pickupWindow}</Text>
-            <PrimaryButton
-              label="Voir et réserver"
-              onPress={() => onOpenListing(item.id)}
-            />
+            {canBuyer ? (
+              <PrimaryButton
+                label="Voir et réserver"
+                onPress={() => onOpenListing(item.id)}
+              />
+            ) : (
+              <Text style={styles.noticeText}>
+                Réservation réservée aux acheteurs.
+              </Text>
+            )}
           </Card>
         )}
       />
@@ -192,18 +202,6 @@ const styles = StyleSheet.create({
     color: colors.muted,
     marginBottom: spacing.sm,
   },
-  searchRow: {
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.md,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
-    backgroundColor: colors.surface,
-    marginBottom: spacing.md,
-  },
-  filterCard: {
-    marginBottom: spacing.md,
-  },
   sectionTitle: {
     ...textStyles.h3,
     marginBottom: spacing.sm,
@@ -213,11 +211,24 @@ const styles = StyleSheet.create({
   },
   statusItem: {
     ...textStyles.caption,
+    color: colors.muted,
     marginBottom: spacing.xs,
   },
+  searchRow: {
+    marginBottom: spacing.md,
+  },
   searchInput: {
-    fontFamily: textStyles.body.fontFamily,
+    backgroundColor: colors.surface,
+    borderRadius: radius.md,
+    borderWidth: 1.5,
+    borderColor: 'rgba(11, 61, 104, 0.35)',
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    fontSize: 15,
     color: colors.text,
+  },
+  filterCard: {
+    marginBottom: spacing.md,
   },
   list: {
     paddingBottom: spacing.xxl,
@@ -229,7 +240,7 @@ const styles = StyleSheet.create({
   },
   card: {
     marginBottom: spacing.md,
-    borderColor: 'rgba(226, 58, 46, 0.12)',
+    borderColor: 'rgba(11, 61, 104, 0.2)',
   },
   image: {
     width: '100%',
@@ -239,7 +250,6 @@ const styles = StyleSheet.create({
   },
   cardTitle: {
     ...textStyles.h3,
-    marginBottom: spacing.xs,
   },
   cardText: {
     ...textStyles.body,
@@ -249,5 +259,9 @@ const styles = StyleSheet.create({
     ...textStyles.caption,
     marginTop: spacing.xs,
   },
+  noticeText: {
+    ...textStyles.caption,
+    color: colors.muted,
+    marginTop: spacing.sm,
+  },
 });
-

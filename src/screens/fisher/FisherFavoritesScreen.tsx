@@ -8,7 +8,8 @@ import { useAppState } from '../../state/AppState';
 import { colors, radius, spacing, textStyles } from '../../theme';
 
 export const FisherFavoritesScreen: React.FC = () => {
-  const { listings, favorites, toggleFavorite } = useAppState();
+  const { listings, favorites, toggleFavorite, role } = useAppState();
+  const canFisher = role === 'fisher' || role === 'admin';
 
   const favoriteListings = useMemo(() => {
     return listings
@@ -22,6 +23,11 @@ export const FisherFavoritesScreen: React.FC = () => {
   return (
     <Screen style={styles.container}>
       <Text style={styles.title}>Annonces suivies</Text>
+      {!canFisher && (
+        <Text style={styles.noticeText}>
+          Fonction réservée aux pêcheurs.
+        </Text>
+      )}
       <FlatList
         data={favoriteListings}
         keyExtractor={(item) => item.id}
@@ -37,12 +43,14 @@ export const FisherFavoritesScreen: React.FC = () => {
             <View style={styles.rowBetween}>
               <Text style={styles.cardTitle}>{item.title}</Text>
               <View style={styles.rowEnd}>
-                <Pressable
-                  onPress={() => toggleFavorite(item.id)}
-                  style={styles.favoriteButton}
-                >
-                  <Ionicons name="heart" size={18} color={colors.danger} />
-                </Pressable>
+                {canFisher && (
+                  <Pressable
+                    onPress={() => toggleFavorite(item.id)}
+                    style={styles.favoriteButton}
+                  >
+                    <Ionicons name="heart" size={18} color={colors.danger} />
+                  </Pressable>
+                )}
                 <Tag label={item.status === 'active' ? 'Active' : 'Clôturée'} />
               </View>
             </View>
@@ -121,6 +129,11 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: spacing.xs,
     marginTop: spacing.xs,
+  },
+  noticeText: {
+    ...textStyles.caption,
+    color: colors.muted,
+    marginBottom: spacing.sm,
   },
 });
 

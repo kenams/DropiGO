@@ -32,9 +32,7 @@ const ProfileContent: React.FC<Props> = ({ onBack }) => {
     syncHistory,
     syncQueue,
     fisherProfile,
-    fisherStatus,
     buyerProfile,
-    buyerStatus,
     fisherApplicants,
     buyerApplicants,
     updateFisherApplicantStatus,
@@ -64,7 +62,11 @@ const ProfileContent: React.FC<Props> = ({ onBack }) => {
       <Card style={styles.card}>
         <Text style={styles.label}>Rôle actuel</Text>
         <Text style={styles.value}>
-          {role === 'fisher' ? 'Pêcheur professionnel' : 'Acheteur professionnel'}
+          {role === 'admin'
+            ? 'Administrateur'
+            : role === 'fisher'
+            ? 'Pêcheur professionnel'
+            : 'Acheteur professionnel'}
         </Text>
         <Text style={styles.label}>Paiement</Text>
         <Text style={styles.value}>Séquestre DroPiPêche</Text>
@@ -82,14 +84,6 @@ const ProfileContent: React.FC<Props> = ({ onBack }) => {
             <Text style={styles.value}>
               {fisherProfile.phone || 'Téléphone non renseigné'}
             </Text>
-            <Text style={styles.label}>Statut KYC</Text>
-            <Text style={styles.value}>
-              {fisherStatus === 'approved'
-                ? 'Validé'
-                : fisherStatus === 'pending'
-                ? 'En attente'
-                : 'À compléter'}
-            </Text>
           </>
         )}
 
@@ -106,107 +100,103 @@ const ProfileContent: React.FC<Props> = ({ onBack }) => {
             <Text style={styles.value}>
               {buyerProfile.email || 'Email non renseigné'}
             </Text>
-            <Text style={styles.label}>Statut KYC</Text>
-            <Text style={styles.value}>
-              {buyerStatus === 'approved'
-                ? 'Validé'
-                : buyerStatus === 'pending'
-                ? 'En attente'
-                : 'À compléter'}
-            </Text>
           </>
         )}
       </Card>
 
-      <Card style={styles.card}>
-        <Text style={styles.sectionTitle}>Admin (démo)</Text>
-        <View style={styles.rowBetween}>
-          <Text style={styles.label}>Transactions</Text>
-          <Text style={styles.value}>{reservations.length}</Text>
-        </View>
-        <View style={styles.rowBetween}>
-          <Text style={styles.label}>Séquestres actifs</Text>
-          <Text style={styles.value}>{escrowActiveCount}</Text>
-        </View>
-        <View style={styles.rowBetween}>
-          <Text style={styles.label}>Litiges en cours</Text>
-          <Text style={styles.value}>{disputeItems.length}</Text>
-        </View>
+      {role === 'admin' && (
+        <Card style={styles.card}>
+          <Text style={styles.sectionTitle}>Admin (démo)</Text>
+          <View style={styles.rowBetween}>
+            <Text style={styles.label}>Transactions</Text>
+            <Text style={styles.value}>{reservations.length}</Text>
+          </View>
+          <View style={styles.rowBetween}>
+            <Text style={styles.label}>Séquestres actifs</Text>
+            <Text style={styles.value}>{escrowActiveCount}</Text>
+          </View>
+          <View style={styles.rowBetween}>
+            <Text style={styles.label}>Litiges en cours</Text>
+            <Text style={styles.value}>{disputeItems.length}</Text>
+          </View>
 
-        <Text style={styles.subTitle}>Pêcheurs en attente</Text>
-        {fisherApplicants.filter((item) => item.status === 'pending').length === 0 ? (
-          <Text style={styles.empty}>Aucun dossier en attente.</Text>
-        ) : (
-          fisherApplicants
-            .filter((item) => item.status === 'pending')
-            .slice(0, 2)
-            .map((item) => (
-              <View key={item.id} style={styles.adminRow}>
-                <Text style={styles.value}>{item.name}</Text>
-                <View style={styles.adminActions}>
+          <Text style={styles.subTitle}>Pêcheurs en attente</Text>
+          {fisherApplicants.filter((item) => item.status === 'pending').length ===
+          0 ? (
+            <Text style={styles.empty}>Aucun dossier en attente.</Text>
+          ) : (
+            fisherApplicants
+              .filter((item) => item.status === 'pending')
+              .slice(0, 2)
+              .map((item) => (
+                <View key={item.id} style={styles.adminRow}>
+                  <Text style={styles.value}>{item.name}</Text>
+                  <View style={styles.adminActions}>
+                    <GhostButton
+                      label="Valider"
+                      onPress={() => updateFisherApplicantStatus(item.id, 'verified')}
+                    />
+                    <GhostButton
+                      label="Refuser"
+                      onPress={() => updateFisherApplicantStatus(item.id, 'rejected')}
+                    />
+                  </View>
+                </View>
+              ))
+          )}
+
+          <Text style={styles.subTitle}>Acheteurs en attente</Text>
+          {buyerApplicants.filter((item) => item.status === 'pending').length ===
+          0 ? (
+            <Text style={styles.empty}>Aucun dossier en attente.</Text>
+          ) : (
+            buyerApplicants
+              .filter((item) => item.status === 'pending')
+              .slice(0, 2)
+              .map((item) => (
+                <View key={item.id} style={styles.adminRow}>
+                  <Text style={styles.value}>{item.company}</Text>
+                  <View style={styles.adminActions}>
+                    <GhostButton
+                      label="Valider"
+                      onPress={() => updateBuyerApplicantStatus(item.id, 'verified')}
+                    />
+                    <GhostButton
+                      label="Refuser"
+                      onPress={() => updateBuyerApplicantStatus(item.id, 'rejected')}
+                    />
+                  </View>
+                </View>
+              ))
+          )}
+
+          <Text style={styles.subTitle}>Litiges</Text>
+          {disputeItems.length === 0 ? (
+            <Text style={styles.empty}>Aucun litige à traiter.</Text>
+          ) : (
+            disputeItems.slice(0, 2).map((item) => (
+              <View key={item.id} style={styles.disputeRow}>
+                <Text style={styles.value}>{item.listingTitle}</Text>
+                <Text style={styles.caption}>Acheteur : {item.buyerName}</Text>
+                <View style={styles.disputeActions}>
                   <GhostButton
-                    label="Valider"
-                    onPress={() => updateFisherApplicantStatus(item.id, 'approved')}
+                    label="Rembourser"
+                    onPress={() => resolveDispute(item.id, 'refund_buyer')}
                   />
                   <GhostButton
-                    label="Refuser"
-                    onPress={() => updateFisherApplicantStatus(item.id, 'rejected')}
+                    label="Payer pêcheur"
+                    onPress={() => resolveDispute(item.id, 'pay_fisher')}
+                  />
+                  <GhostButton
+                    label="Partager"
+                    onPress={() => resolveDispute(item.id, 'split')}
                   />
                 </View>
               </View>
             ))
-        )}
-
-        <Text style={styles.subTitle}>Acheteurs en attente</Text>
-        {buyerApplicants.filter((item) => item.status === 'pending').length === 0 ? (
-          <Text style={styles.empty}>Aucun dossier en attente.</Text>
-        ) : (
-          buyerApplicants
-            .filter((item) => item.status === 'pending')
-            .slice(0, 2)
-            .map((item) => (
-              <View key={item.id} style={styles.adminRow}>
-                <Text style={styles.value}>{item.company}</Text>
-                <View style={styles.adminActions}>
-                  <GhostButton
-                    label="Valider"
-                    onPress={() => updateBuyerApplicantStatus(item.id, 'approved')}
-                  />
-                  <GhostButton
-                    label="Refuser"
-                    onPress={() => updateBuyerApplicantStatus(item.id, 'rejected')}
-                  />
-                </View>
-              </View>
-            ))
-        )}
-
-        <Text style={styles.subTitle}>Litiges</Text>
-        {disputeItems.length === 0 ? (
-          <Text style={styles.empty}>Aucun litige à traiter.</Text>
-        ) : (
-          disputeItems.slice(0, 2).map((item) => (
-            <View key={item.id} style={styles.disputeRow}>
-              <Text style={styles.value}>{item.listingTitle}</Text>
-              <Text style={styles.caption}>Acheteur : {item.buyerName}</Text>
-              <View style={styles.disputeActions}>
-                <GhostButton
-                  label="Rembourser"
-                  onPress={() => resolveDispute(item.id, 'refund_buyer')}
-                />
-                <GhostButton
-                  label="Payer pêcheur"
-                  onPress={() => resolveDispute(item.id, 'pay_fisher')}
-                />
-                <GhostButton
-                  label="Partager"
-                  onPress={() => resolveDispute(item.id, 'split')}
-                />
-              </View>
-            </View>
-          ))
-        )}
-      </Card>
+          )}
+        </Card>
+      )}
 
       <Card style={styles.card}>
         <Text style={styles.sectionTitle}>Synchronisation</Text>

@@ -1,4 +1,4 @@
-﻿import React from 'react';
+import React from 'react';
 import { FlatList, Image, StyleSheet, Text, View } from 'react-native';
 import { Card } from '../../components/Card';
 import { Logo } from '../../components/Logo';
@@ -8,13 +8,12 @@ import { BackButton } from '../../components/BackButton';
 import { useAppState } from '../../state/AppState';
 import { colors, radius, spacing, textStyles } from '../../theme';
 
-// Simple fisher dashboard for the MVP demo.
 export const FisherHomeScreen: React.FC = () => {
-  const { listings, signOut } = useAppState();
+  const { listings, signOut, role } = useAppState();
 
-  return (
-    <Screen style={styles.container}>
-      <BackButton onPress={signOut} style={styles.back} />
+  const header = (
+    <View>
+      {role !== 'admin' && <BackButton onPress={signOut} style={styles.back} />}
       <View style={styles.headerRow}>
         <Logo size={64} showWordmark={false} compact />
         <View style={styles.headerText}>
@@ -24,10 +23,16 @@ export const FisherHomeScreen: React.FC = () => {
       </View>
       <Text style={styles.meta}>Données chargées : {listings.length} pêches</Text>
 
+    </View>
+  );
+
+  return (
+    <Screen style={styles.container}>
       <FlatList
         data={listings}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.list}
+        ListHeaderComponent={header}
         ListEmptyComponent={
           <Text style={styles.empty}>Aucune annonce pour le moment.</Text>
         }
@@ -83,6 +88,10 @@ const styles = StyleSheet.create({
     color: colors.muted,
     marginBottom: spacing.sm,
   },
+  sectionTitle: {
+    ...textStyles.h3,
+    marginBottom: spacing.sm,
+  },
   list: {
     paddingBottom: spacing.xxl,
   },
@@ -93,7 +102,7 @@ const styles = StyleSheet.create({
   },
   card: {
     marginBottom: spacing.md,
-    borderColor: 'rgba(226, 58, 46, 0.12)',
+    borderColor: 'rgba(11, 61, 104, 0.2)',
   },
   image: {
     width: '100%',
@@ -118,4 +127,3 @@ const styles = StyleSheet.create({
     marginTop: spacing.xs,
   },
 });
-
